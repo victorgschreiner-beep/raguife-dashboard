@@ -270,7 +270,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   .tv-oee-bar-fill { height: 100%; border-radius: 4px; transition: width .8s cubic-bezier(.4,0,.2,1); }
 
   /* KPIs grandes TV */
-  .tv-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+  .tv-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
   .tv-kpi {
     background: var(--surface2); border-radius: 12px; padding: 16px;
     border: 1.5px solid var(--border); text-align: center;
@@ -2625,9 +2625,8 @@ function tvRender(){
           onclick="tvOpenModal('${l}')"
           onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 32px rgba(0,0,0,.2)'"
           onmouseleave="this.style.transform='';this.style.boxShadow=''">
-          <div class="tv-oee-linha">${l} <span style="font-size:.55rem;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace">clique p/ detalhes</span></div>
+          <div class="tv-oee-linha">${l}</div>
           <div class="tv-oee-val" style="color:${cor}">${oee.toFixed(1)}%</div>
-          <div class="tv-oee-sub">D:${disp.toFixed(1)}% · P:${perf.toFixed(1)}% · Q:${qual.toFixed(1)}%</div>
           <div class="tv-oee-bar-bg">
             <div class="tv-oee-bar-fill" style="width:${Math.min(100,oee).toFixed(1)}%;background:${cor}"></div>
           </div>
@@ -2649,7 +2648,15 @@ function tvRender(){
     const pHL4      = dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size)*24:24;
     const dispG     = pHL4>0?(Math.max(0,pHL4-mntH)/pHL4)*100:100;
     const oeeMed    = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
+    // OEE geral = média das 4 linhas
+    const oeeGeral4 = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
+    const oeeG4Cor  = tvOEEColor(oeeGeral4);
     kpiGrid.innerHTML = `
+      <div class="tv-kpi" style="border-top:3px solid ${oeeG4Cor}">
+        <div class="tv-kpi-lbl">OEE Geral</div>
+        <div class="tv-kpi-val" style="color:${oeeG4Cor}">${oeeGeral4.toFixed(1)}%</div>
+        <div class="tv-kpi-unit">média 4 linhas</div>
+      </div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">Produção</div><div class="tv-kpi-val" style="color:var(--gdk)">${fmtKg(totalProd)}</div><div class="tv-kpi-unit">kg</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">% Meta</div><div class="tv-kpi-val" style="color:${totalMeta>0&&totalProd/totalMeta>=.85?'var(--gdk)':'var(--red)'}">${totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—'}</div><div class="tv-kpi-unit">real/meta</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">H. Paradas</div><div class="tv-kpi-val" style="color:var(--red)">${hPar.toFixed(2)}h</div><div class="tv-kpi-unit">não planejadas</div></div>
