@@ -424,6 +424,83 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
     .tv-f-bottom { grid-template-columns: 1fr; }
   }
 
+
+  /* ══ MODAL PARADAS LINHA — TV ══ */
+  .tv-modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9990;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+  }
+  .tv-modal-overlay.active { display: flex; }
+  .tv-modal {
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 18px; width: 90%; max-width: 860px;
+    max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 80px rgba(0,0,0,.4); overflow: hidden;
+    animation: modalIn .25s ease;
+  }
+  @keyframes modalIn { from { opacity:0; transform:scale(.95) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  .tv-modal-hdr {
+    padding: 20px 24px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 2px solid var(--border); flex-shrink: 0;
+  }
+  .tv-modal-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+  .tv-modal-title { font-size: 1.1rem; font-weight: 900; color: var(--text); }
+  .tv-modal-sub { font-size: .72rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 2px; }
+  .tv-modal-close {
+    margin-left: auto; background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 8px; padding: 7px 14px; font-size: .8rem; font-weight: 800;
+    font-family: 'Nunito', sans-serif; cursor: pointer; color: var(--muted);
+    transition: all .2s;
+  }
+  .tv-modal-close:hover { background: var(--red); color: #fff; border-color: var(--red); }
+  .tv-modal-kpis {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+    padding: 16px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .tv-modal-kpi {
+    background: var(--surface2); border-radius: 10px; padding: 12px;
+    text-align: center; border: 1.5px solid var(--border);
+  }
+  .tv-modal-kpi-l { font-size: .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: 'DM Mono', monospace; }
+  .tv-modal-kpi-v { font-size: 1.5rem; font-weight: 900; margin-top: 4px; }
+  .tv-modal-kpi-u { font-size: .62rem; color: var(--muted); margin-top: 2px; }
+  .tv-modal-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
+  .tv-modal-section-title {
+    font-size: .65rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 2px; font-family: 'DM Mono', monospace;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .tv-modal-section-title::after { content: ''; flex: 1; height: 1.5px; background: var(--border); }
+  .tv-modal-par-item {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface2); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px;
+    border-left: 4px solid var(--border); transition: transform .15s;
+    cursor: default;
+  }
+  .tv-modal-par-item:hover { transform: translateX(4px); }
+  .tv-modal-par-item.mnt  { border-left-color: var(--red); }
+  .tv-modal-par-item.op   { border-left-color: var(--gdk); }
+  .tv-modal-par-item.setup{ border-left-color: var(--glt); }
+  .tv-modal-par-item.ext  { border-left-color: #6366f1; }
+  .tv-modal-par-num { font-size: .8rem; font-weight: 900; color: var(--muted); min-width: 24px; font-family: 'DM Mono', monospace; }
+  .tv-modal-par-info { flex: 1; min-width: 0; }
+  .tv-modal-par-motivo { font-size: .88rem; font-weight: 800; }
+  .tv-modal-par-meta { font-size: .67rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 3px; }
+  .tv-modal-par-dur { text-align: right; }
+  .tv-modal-par-h { font-size: 1.2rem; font-weight: 900; font-family: 'DM Mono', monospace; }
+  .tv-modal-par-turno { font-size: .62rem; color: var(--muted); margin-top: 2px; font-family: 'DM Mono', monospace; }
+  /* Barra de proporção */
+  .tv-modal-par-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .tv-modal-par-bar-fill { height: 100%; border-radius: 2px; }
+  /* OEE detalhado no modal */
+  .tv-modal-oee { display: flex; gap: 10px; margin-bottom: 14px; }
+  .tv-modal-oee-item { flex: 1; background: var(--surface2); border-radius: 10px; padding: 14px; text-align: center; border: 1.5px solid var(--border); }
+  .tv-modal-oee-lbl { font-size: .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: 'DM Mono', monospace; }
+  .tv-modal-oee-val { font-size: 2rem; font-weight: 900; margin-top: 4px; }
+  .tv-modal-oee-sub { font-size: .62rem; color: var(--muted); margin-top: 2px; }
+
 </style>
 </head>
 <body>
@@ -963,6 +1040,50 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   </div>
 </div>
 <button class="tv-exit-btn" id="tvExitBtn" onclick="tvExitFullscreen()">✕ Sair</button>
+
+<!-- MODAL PARADAS POR LINHA — TV -->
+<div class="tv-modal-overlay" id="tvModalOverlay" onclick="tvModalClickOverlay(event)">
+  <div class="tv-modal" id="tvModal">
+    <div class="tv-modal-hdr">
+      <div class="tv-modal-dot" id="tvModalDot"></div>
+      <div>
+        <div class="tv-modal-title" id="tvModalTitle">Linha —</div>
+        <div class="tv-modal-sub" id="tvModalSub">Paradas do dia</div>
+      </div>
+      <button class="tv-modal-close" onclick="tvCloseModal()">✕ Fechar</button>
+    </div>
+    <!-- OEE destrinchado -->
+    <div class="tv-modal-oee" id="tvModalOEE" style="padding:14px 24px 0;flex-shrink:0">
+      <div class="tv-modal-oee-item">
+        <div class="tv-modal-oee-lbl">Disponibilidade</div>
+        <div class="tv-modal-oee-val" id="tvMDisp">—</div>
+        <div class="tv-modal-oee-sub">sem Setup/Planejadas</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:1.5rem;color:var(--muted);font-weight:900;padding:0 4px">×</div>
+      <div class="tv-modal-oee-item">
+        <div class="tv-modal-oee-lbl">Performance</div>
+        <div class="tv-modal-oee-val" id="tvMPerf">—</div>
+        <div class="tv-modal-oee-sub">real / meta</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:1.5rem;color:var(--muted);font-weight:900;padding:0 4px">×</div>
+      <div class="tv-modal-oee-item">
+        <div class="tv-modal-oee-lbl">Qualidade</div>
+        <div class="tv-modal-oee-val" id="tvMQual">—</div>
+        <div class="tv-modal-oee-sub">1 - %percas</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:1.5rem;color:var(--muted);font-weight:900;padding:0 4px">=</div>
+      <div class="tv-modal-oee-item" style="border:2px solid var(--gdk)">
+        <div class="tv-modal-oee-lbl">OEE Final</div>
+        <div class="tv-modal-oee-val" id="tvMOEE">—</div>
+        <div class="tv-modal-oee-sub" id="tvMOEEBadge">—</div>
+      </div>
+    </div>
+    <!-- KPIs -->
+    <div class="tv-modal-kpis" id="tvModalKPIs"></div>
+    <!-- Lista de paradas -->
+    <div class="tv-modal-body" id="tvModalBody"></div>
+  </div>
+</div>
 
 
 <script>
@@ -2500,8 +2621,11 @@ function tvRender(){
       const cor = tvOEEColor(oee);
       const lc  = LC[l]||'#024f2b';
       oeeGrid.innerHTML += `
-        <div class="tv-oee-card" style="--lc:${lc}">
-          <div class="tv-oee-linha">${l}</div>
+        <div class="tv-oee-card" style="--lc:${lc};cursor:pointer;transition:transform .2s,box-shadow .2s"
+          onclick="tvOpenModal('${l}')"
+          onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 32px rgba(0,0,0,.2)'"
+          onmouseleave="this.style.transform='';this.style.boxShadow=''">
+          <div class="tv-oee-linha">${l} <span style="font-size:.55rem;color:rgba(255,255,255,.4);font-family:'DM Mono',monospace">clique p/ detalhes</span></div>
           <div class="tv-oee-val" style="color:${cor}">${oee.toFixed(1)}%</div>
           <div class="tv-oee-sub">D:${disp.toFixed(1)}% · P:${perf.toFixed(1)}% · Q:${qual.toFixed(1)}%</div>
           <div class="tv-oee-bar-bg">
@@ -2860,6 +2984,133 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Escape' && tvFMode) tvExitFullscreen();
   if(e.key==='ArrowRight' && document.getElementById('page-tv')?.classList.contains('active')) tvNext();
   if(e.key==='ArrowLeft'  && document.getElementById('page-tv')?.classList.contains('active')) tvPrev();
+});
+
+
+// ── Modal de Paradas por Linha ──
+function tvOpenModal(linha){
+  const dia = tvGetDia();
+  const par = tvGetParDia(dia).filter(d=>d.linha===linha);
+  const prod= tvGetProdDia(dia).filter(d=>d.linha===linha);
+  const perc= tvGetPercDia(dia).filter(d=>d.linha===linha);
+  const {oee,disp,perf,qual,real,meta,percs} = tvCalcOEE(dia, linha);
+  const lc  = LC[linha]||'#024f2b';
+
+  // Header
+  document.getElementById('tvModalDot').style.background   = lc;
+  document.getElementById('tvModalTitle').textContent       = linha;
+  document.getElementById('tvModalSub').textContent         =
+    tvFmtDia(dia) + ' · ' + par.length + ' parada' + (par.length!==1?'s':'') + ' registradas';
+
+  // OEE destrinchado
+  const oeeColor = tvOEEColor(oee);
+  document.getElementById('tvMDisp').textContent = disp.toFixed(1)+'%';
+  document.getElementById('tvMDisp').style.color = disp>=96?'var(--gdk)':disp>=90?'var(--amber)':'var(--red)';
+  document.getElementById('tvMPerf').textContent = perf.toFixed(1)+'%';
+  document.getElementById('tvMPerf').style.color = perf>=85?'var(--gdk)':perf>=70?'var(--amber)':'var(--red)';
+  document.getElementById('tvMQual').textContent = qual.toFixed(1)+'%';
+  document.getElementById('tvMQual').style.color = qual>=95?'var(--gdk)':qual>=90?'var(--amber)':'var(--red)';
+  document.getElementById('tvMOEE').textContent  = oee.toFixed(1)+'%';
+  document.getElementById('tvMOEE').style.color  = oeeColor;
+  document.getElementById('tvMOEEBadge').textContent =
+    oee>=85?'✅ Ótimo':oee>=70?'⚠️ Aceitável':'❌ Abaixo da meta';
+
+  // KPIs
+  const hPar    = par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+  const hSetup  = par.filter(d=>d.categoria==='Setup').reduce((s,d)=>s+d.duracao/60,0);
+  const hMnt    = par.filter(d=>d.categoria==='Manutenção').reduce((s,d)=>s+d.duracao/60,0);
+  const hPlan   = par.filter(d=>d.categoria==='Fator Externo/Parada Planejada').reduce((s,d)=>s+d.duracao/60,0);
+  document.getElementById('tvModalKPIs').innerHTML = `
+    <div class="tv-modal-kpi">
+      <div class="tv-modal-kpi-l">Produção</div>
+      <div class="tv-modal-kpi-v" style="color:var(--gdk)">${fmtKg(real)}</div>
+      <div class="tv-modal-kpi-u">kg · meta ${fmtKg(meta)}</div>
+    </div>
+    <div class="tv-modal-kpi">
+      <div class="tv-modal-kpi-l">H. Não Planejadas</div>
+      <div class="tv-modal-kpi-v" style="color:var(--red)">${hPar.toFixed(2)}h</div>
+      <div class="tv-modal-kpi-u">Manutenção + Operacional</div>
+    </div>
+    <div class="tv-modal-kpi">
+      <div class="tv-modal-kpi-l">H. Setup</div>
+      <div class="tv-modal-kpi-v" style="color:var(--glt)">${hSetup.toFixed(2)}h</div>
+      <div class="tv-modal-kpi-u">trocas de formato</div>
+    </div>
+    <div class="tv-modal-kpi">
+      <div class="tv-modal-kpi-l">H. Planejadas</div>
+      <div class="tv-modal-kpi-v" style="color:var(--muted)">${hPlan.toFixed(2)}h</div>
+      <div class="tv-modal-kpi-u">programadas</div>
+    </div>`;
+
+  // Agrupar paradas por motivo (somando splits)
+  const byKey={};
+  par.forEach(r=>{
+    const k=r.categoria+'|'+r.motivo;
+    if(!byKey[k]){byKey[k]={...r,duracao:0,n:0,turnos:new Set()};}
+    byKey[k].duracao += r.duracao;
+    byKey[k].n++;
+    byKey[k].turnos.add(r.turno);
+  });
+  const sorted = Object.values(byKey).sort((a,b)=>b.duracao-a.duracao);
+  const maxDur = sorted[0]?.duracao||1;
+  const total  = sorted.reduce((s,r)=>s+r.duracao,0)||1;
+
+  // Separar por categoria
+  const cats = ['Manutenção','Operacional','Setup','Fator Externo/Parada Planejada','Utilidades'];
+  let bodyHTML = '';
+
+  cats.forEach(cat=>{
+    const items = sorted.filter(r=>r.categoria===cat);
+    if(!items.length) return;
+    const catCor = CC[cat]||'#888';
+    const catCls = cat==='Manutenção'?'mnt':cat==='Setup'?'setup':cat.includes('Externo')?'ext':'op';
+    bodyHTML += `<div class="tv-modal-section-title" style="color:${catCor}">${cat} — ${items.length} evento${items.length!==1?'s':''} · ${items.reduce((s,r)=>s+r.duracao/60,0).toFixed(2)}h</div>`;
+    items.forEach((r,i)=>{
+      const turnos = [...r.turnos].sort().map(t=>`T${t}`).join(', ');
+      const pct    = (r.duracao/total*100).toFixed(1);
+      bodyHTML += `
+        <div class="tv-modal-par-item ${catCls}">
+          <div class="tv-modal-par-num">#${i+1}</div>
+          <div class="tv-modal-par-info">
+            <div class="tv-modal-par-motivo">${r.motivo}</div>
+            <div class="tv-modal-par-bar">
+              <div class="tv-modal-par-bar-fill" style="width:${(r.duracao/maxDur*100).toFixed(1)}%;background:${catCor}88"></div>
+            </div>
+            <div class="tv-modal-par-meta">${r.n} evento${r.n!==1?'s':''} · Turnos: ${turnos} · ${pct}% do total</div>
+          </div>
+          <div class="tv-modal-par-dur">
+            <div class="tv-modal-par-h">${(r.duracao/60).toFixed(2)}h</div>
+            <div class="tv-modal-par-turno">${(r.duracao).toFixed(0)}min</div>
+          </div>
+        </div>`;
+    });
+  });
+
+  if(!sorted.length){
+    bodyHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:1rem">✅ Nenhuma parada registrada neste dia para esta linha</div>';
+  }
+
+  document.getElementById('tvModalBody').innerHTML = bodyHTML;
+  document.getElementById('tvModalOverlay').classList.add('active');
+  document.getElementById('tvModal').style.borderTopColor = lc;
+  document.getElementById('tvModal').style.borderTop = `4px solid ${lc}`;
+}
+
+function tvCloseModal(){
+  document.getElementById('tvModalOverlay').classList.remove('active');
+}
+function tvModalClickOverlay(e){
+  if(e.target===document.getElementById('tvModalOverlay')) tvCloseModal();
+}
+
+// Tecla ESC fecha modal também
+const _oldKeydown = document.onkeydown;
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    if(document.getElementById('tvModalOverlay')?.classList.contains('active')){
+      tvCloseModal(); e.stopPropagation();
+    }
+  }
 });
 
 // ═══════════════════════ INIT ═══════════════════════
