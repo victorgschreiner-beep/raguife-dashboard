@@ -2367,9 +2367,13 @@ function updateAll(){
     renderParadasAll();
   }
   if(id==='tv'){
-    tvInitDias();
-    tvRender();
-    tvSetMode('reuniao');
+    // Pequeno delay para garantir que o DOM está pronto
+    setTimeout(()=>{
+      tvInitDias();
+      tvSetMode('reuniao');
+      tvRender();
+      tvUpdatePips();
+    }, 50);
   }
 }
 
@@ -2389,6 +2393,8 @@ function tvInitDias(){
   const dias = [...new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean))].sort();
   const sel  = document.getElementById('tvDiaSel');
   if(!sel) return;
+  // Só repopular se necessário
+  const currVal = sel.value;
   sel.innerHTML = '<option value="all">Todos os dias</option>';
   dias.forEach(d=>{
     const o = document.createElement('option');
@@ -2397,8 +2403,10 @@ function tvInitDias(){
     o.textContent = lbl;
     sel.appendChild(o);
   });
-  // Selecionar o último dia por padrão
-  if(dias.length) sel.value = dias[dias.length-1];
+  // Manter seleção atual ou selecionar o último dia
+  if(dias.includes(currVal)) sel.value = currVal;
+  else if(dias.length) sel.value = dias[dias.length-1];
+  console.log('TV: dias disponíveis:', dias.length, '| dia selecionado:', sel.value);
 }
 
 // ── Obter dados do dia selecionado ──
@@ -2410,10 +2418,21 @@ function tvGetParDia(dia){
   return dia === 'all' ? RAW_PARADAS : RAW_PARADAS.filter(d=>d.dia_prod===dia);
 }
 function tvGetProdDia(dia){
-  return dia === 'all' ? RAW_PRODUCAO : RAW_PRODUCAO.filter(d=>d.dia_prod===dia||d.data===dia);
+  if(dia==='all') return RAW_PRODUCAO;
+  // Comparar dia_prod primeiro, depois MM-DD para compatibilidade de anos
+  const mmdd = dia.slice(5); // MM-DD
+  return RAW_PRODUCAO.filter(d=>
+    d.dia_prod===dia || d.data===dia ||
+    (d.data && d.data.slice(5)===mmdd)
+  );
 }
 function tvGetPercDia(dia){
-  return dia === 'all' ? RAW_REPROCESSO : RAW_REPROCESSO.filter(d=>(d.dia_prod||d.data)===dia||d.data===dia);
+  if(dia==='all') return RAW_REPROCESSO;
+  const mmdd = dia.slice(5);
+  return RAW_REPROCESSO.filter(d=>
+    (d.dia_prod||d.data)===dia || d.data===dia ||
+    (d.data && d.data.slice(5)===mmdd)
+  );
 }
 function tvFmtDia(dia){
   if(!dia || dia==='all') return 'Todos os dias';
@@ -2422,18 +2441,30 @@ function tvFmtDia(dia){
 
 // ── Calcular OEE para um dia e linha ──
 function tvCalcOEE(dia, linha){
-  const pHL = dia==='all' ? Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size)*24 : 24;
+  // pHL: 24h por dia produtivo por linha (3 turnos × 8h)
+  const nDias = dia==='all'
+    ? Math.max(1, new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size)
+    : 1;
+  const pHL = nDias * 24;
+
   const par  = tvGetParDia(dia).filter(d=>d.linha===linha);
   const prod = tvGetProdDia(dia).filter(d=>d.linha===linha);
   const perc = tvGetPercDia(dia).filter(d=>d.linha===linha);
-  const pD   = par.filter(d=>!CATS_EXCL.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-  const disp = Math.max(0,Math.min(1,(pHL-pD)/pHL));
-  const real = prod.reduce((s,d)=>s+d.quantidade,0);
-  const meta = prod.reduce((s,d)=>s+(d.meta||0),0);
-  const perf = meta>0?Math.min(1,real/meta):1;
-  const percs= perc.reduce((s,d)=>s+d.quantidade,0);
-  const qual = real>0?Math.max(0,(real-percs)/real):1;
-  return {oee:disp*perf*qual*100,disp:disp*100,perf:perf*100,qual:qual*100,real,meta,percs,pD};
+
+  // Disponibilidade: exclui Setup e Planejadas
+  const pD   = par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+  const disp = Math.max(0, Math.min(1, (pHL - pD) / pHL));
+
+  // Performance
+  const real = prod.reduce((s,d)=>s+d.quantidade, 0);
+  const meta = prod.reduce((s,d)=>s+(d.meta||0), 0);
+  const perf = meta>0 ? Math.min(1, real/meta) : (real>0?1:0);
+
+  // Qualidade
+  const percs = perc.reduce((s,d)=>s+d.quantidade, 0);
+  const qual  = real>0 ? Math.max(0,(real-percs)/real) : 1;
+
+  return {oee:disp*perf*qual*100, disp:disp*100, perf:perf*100, qual:qual*100, real, meta, percs, pD};
 }
 
 // ── OEE color ──
@@ -2453,6 +2484,7 @@ function tvRender(){
   const diaLbl= tvFmtDia(dia);
   const par   = tvGetParDia(dia);
   const prod  = tvGetProdDia(dia);
+  console.log('TV tvRender: dia='+dia+' par='+par.length+' prod='+prod.length);
 
   // Labels dos slides
   ['tvDiaLabel0','tvDiaLabel1','tvDiaLabel2','tvDiaLabel3'].forEach(id=>{
@@ -2484,7 +2516,7 @@ function tvRender(){
   if(kpiGrid){
     const totalProd = prod.reduce((s,d)=>s+d.quantidade,0);
     const totalMeta = prod.reduce((s,d)=>s+(d.meta||0),0);
-    const hPar      = par.filter(d=>!CATS_EXCL.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const hPar      = par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
     const hPlan     = par.filter(d=>d.categoria==='Fator Externo/Parada Planejada').reduce((s,d)=>s+d.duracao/60,0);
     const mnt       = par.filter(d=>d.categoria==='Manutenção');
     const mntH      = mnt.reduce((s,d)=>s+d.duracao/60,0);
@@ -2582,8 +2614,8 @@ function tvRender(){
     };
     const currProd = prod.reduce((s,d)=>s+d.quantidade,0);
     const prevProd = prodPrev.reduce((s,d)=>s+d.quantidade,0);
-    const currHPar = par.filter(d=>!CATS_EXCL.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-    const prevHPar = parPrev.filter(d=>!CATS_EXCL.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const currHPar = par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const prevHPar = parPrev.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
     const currOEE  = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
     const prevOEE  = diaPrev ? LINHAS.map(l=>tvCalcOEE(diaPrev,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length : 0;
     compGrid.innerHTML =
@@ -2744,7 +2776,7 @@ function tvFRender(){
   if(kGrid){
     const totalProd=prod.reduce((s,d)=>s+d.quantidade,0);
     const totalMeta=prod.reduce((s,d)=>s+(d.meta||0),0);
-    const hPar=par.filter(d=>!CATS_EXCL.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const hPar=par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
     const hPlan=par.filter(d=>d.categoria==='Fator Externo/Parada Planejada').reduce((s,d)=>s+d.duracao/60,0);
     const mnt=par.filter(d=>d.categoria==='Manutenção');
     const mntH=mnt.reduce((s,d)=>s+d.duracao/60,0);
