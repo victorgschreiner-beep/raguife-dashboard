@@ -1557,8 +1557,10 @@ function updateVisao(){
   const perdasDisp=fParadas.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
   const upH=Math.max(0,pH-perdasDisp);
   // OEE geral (média das linhas)
-  const oeePorLinha=LINHAS.map(l=>calcOEE(l).oee).filter(v=>v>0);
-  const oeeGeral=oeePorLinha.length?oeePorLinha.reduce((a,b)=>a+b,0)/oeePorLinha.length:0;
+  // Excluir linhas 100% paradas por planejamento da média
+  const linhasValidasG = linhasOEEValidasGeral();
+  const oeePorLinha = linhasValidasG.map(l=>calcOEE(l).oee);
+  const oeeGeral = oeePorLinha.length ? oeePorLinha.reduce((a,b)=>a+b,0)/oeePorLinha.length : 0;
 
   document.getElementById('vProd').textContent=fmtKg(totalProd);
   document.getElementById('vMeta').textContent=totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—';
@@ -2354,7 +2356,14 @@ function updateOEEDiario() {
   if(diaAtivo) {
     // OEE geral do dia (média das linhas) — usa RAW sem filtro de turno
     const oeesLinha = linhas.map(l => calcOEEDia(diaAtivo, l));
-    const oeeVals   = oeesLinha.map(o=>o.oee).filter(v=>v>=0);
+    // Excluir linhas paradas 100% por planejamento
+    const linhasValidasDia = linhas.filter(l=>{
+      const prod=RAW_PRODUCAO.filter(d=>(d.dia_prod===diaAtivo||d.data===diaAtivo)&&d.linha===l).reduce((s,d)=>s+d.quantidade,0);
+      const par =RAW_PARADAS.filter(d=>d.dia_prod===diaAtivo&&d.linha===l);
+      if(prod>0) return true;
+      return par.some(d=>!CATS_EXCL_DISP.includes(d.categoria));
+    });
+    const oeeVals   = linhasValidasDia.map(l=>calcOEEDia(diaAtivo,l).oee);
     const oeeGeral  = oeeVals.length ? oeeVals.reduce((a,b)=>a+b,0)/oeeVals.length : 0;
     const dispMed   = linhas.length ? oeesLinha.map(o=>o.disp).reduce((a,b)=>a+b,0)/linhas.length : 0;
     const perfMed   = linhas.length ? oeesLinha.map(o=>o.perf).reduce((a,b)=>a+b,0)/linhas.length : 0;
@@ -2648,8 +2657,11 @@ function tvRender(){
     const pHL4      = dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size)*24:24;
     const dispG     = pHL4>0?(Math.max(0,pHL4-mntH)/pHL4)*100:100;
     const oeeMed    = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
-    // OEE geral = média das 4 linhas
-    const oeeGeral4 = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
+    // OEE geral = média das linhas que estavam operando (exclui paradas 100% planejadas)
+    const linhasValidas4 = tvLinhasOEEValidas(dia);
+    const oeeGeral4 = linhasValidas4.length
+      ? linhasValidas4.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasValidas4.length
+      : 0;
     const oeeG4Cor  = tvOEEColor(oeeGeral4);
     kpiGrid.innerHTML = `
       <div class="tv-kpi" style="border-top:3px solid ${oeeG4Cor}">
@@ -2747,8 +2759,10 @@ function tvRender(){
     const prevProd = prodPrev.reduce((s,d)=>s+d.quantidade,0);
     const currHPar = par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
     const prevHPar = parPrev.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-    const currOEE  = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
-    const prevOEE  = diaPrev ? LINHAS.map(l=>tvCalcOEE(diaPrev,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length : 0;
+    const lv1 = tvLinhasOEEValidas(dia);
+    const lv2 = diaPrev ? tvLinhasOEEValidas(diaPrev) : [];
+    const currOEE = lv1.length ? lv1.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/lv1.length : 0;
+    const prevOEE = lv2.length ? lv2.map(l=>tvCalcOEE(diaPrev,l).oee).reduce((a,b)=>a+b,0)/lv2.length : 0;
     compGrid.innerHTML =
       mkComp('🏭 Produção', currProd, prevProd, 'kg', false) +
       mkComp('⏱️ H. Paradas', currHPar, prevHPar, 'h', true) +
@@ -2914,7 +2928,8 @@ function tvFRender(){
     const nMntU=new Set(mnt.map(d=>d.turno+'|'+d.data+'|'+d.motivo)).size;
     const mttr=nMntU>0?mntH/nMntU:0;
     const dispG=24>0?(Math.max(0,24-mntH)/24)*100:100;
-    const oeeMed=LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
+    const linhasValidasF=tvLinhasOEEValidas(dia);
+    const oeeMed=linhasValidasF.length?linhasValidasF.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasValidasF.length:0;
     const totPerc=perc.reduce((s,d)=>s+d.quantidade,0);
     kGrid.innerHTML=`
       <div class="tv-f-kpi"><div class="tv-f-kpi-l">Produção</div><div class="tv-f-kpi-v" style="color:#a8d060">${fmtKg(totalProd)}</div><div class="tv-f-kpi-u">kg</div></div>
@@ -3119,6 +3134,31 @@ document.addEventListener('keydown', e=>{
     }
   }
 });
+
+
+// ── Filtrar linhas válidas para média OEE ──
+// Exclui linhas que não produziram NADA por parada totalmente planejada
+function tvLinhasOEEValidas(dia){
+  return LINHAS.filter(l=>{
+    const prod = tvGetProdDia(dia).filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
+    const par  = tvGetParDia(dia).filter(d=>d.linha===l);
+    // Se produziu algo → sempre inclui
+    if(prod > 0) return true;
+    // Se não produziu, verificar se há paradas não planejadas
+    const temNaoPlan = par.some(d=>!CATS_EXCL_DISP.includes(d.categoria));
+    // Se não produziu E não tem paradas não planejadas → linha fora do ar por planejamento
+    return temNaoPlan;
+  });
+}
+
+function linhasOEEValidasGeral(){
+  return LINHAS.filter(l=>{
+    const prod = fProd.filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
+    const par  = fParadas.filter(d=>d.linha===l);
+    if(prod > 0) return true;
+    return par.some(d=>!CATS_EXCL_DISP.includes(d.categoria));
+  });
+}
 
 // ═══════════════════════ INIT ═══════════════════════
 Chart.defaults.font.family='DM Mono';
