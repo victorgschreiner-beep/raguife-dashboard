@@ -688,8 +688,8 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="st">🔧 KPIs de Manutenção</div>
   <div class="kgrid">
     <div class="kcard teal"><div class="klbl">MTBF Geral</div><div class="kval sm" id="mMTBF">—</div><div class="kunit">h entre falhas</div><div class="kico">📈</div><div id="mMTBFb"></div></div>
-    <div class="kcard red"><div class="klbl">MTTR Geral</div><div class="kval sm" id="mMTTR">—</div><div class="kunit">meta ≤ 3h por reparo</div><div class="kico">🛠️</div><div id="mMTTRb"></div></div>
-    <div class="kcard gdk"><div class="klbl">Disponibilidade Mnt.</div><div class="kval sm" id="mDisp">—</div><div class="kunit">meta ≥ 96% · (T - H.Mnt) / T</div><div class="kico">✅</div><div id="mDispb"></div></div>
+    <div class="kcard red"><div class="klbl">MTTR Geral</div><div class="kval sm" id="mMTTR">—</div><div class="kunit">meta ≤ 1.5h por reparo</div><div class="kico">🛠️</div><div id="mMTTRb"></div></div>
+    <div class="kcard gdk"><div class="klbl">Disponibilidade Mnt.</div><div class="kval sm" id="mDisp">—</div><div class="kunit">meta ≥ 97.2% · (T - H.Mnt) / T</div><div class="kico">✅</div><div id="mDispb"></div></div>
     <div class="kcard gray"><div class="klbl">Eventos Manutenção</div><div class="kval sm" id="mEvt">—</div><div class="kunit">falhas registradas</div><div class="kico">⚠️</div></div>
     <div class="kcard red"><div class="klbl">Horas em Reparo</div><div class="kval sm" id="mHoras">—</div><div class="kunit">horas paradas</div><div class="kico">⏳</div></div>
     <div class="kcard glt"><div class="klbl">Maior Reparo</div><div class="kval sm" id="mMax">—</div><div class="kunit">horas (pior evento)</div><div class="kico">🔴</div></div>
@@ -697,7 +697,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="st">🏭 Por Linha</div>
   <div class="ccard" style="margin-bottom:18px">
     <div class="ctit">MTBF · MTTR · Disponibilidade por Linha</div>
-    <div class="csub">Disponibilidade = (Tempo Total - Horas de Manutenção) / Tempo Total · Meta ≥ 96%</div>
+    <div class="csub">Disponibilidade = (Tempo Total - Horas de Manutenção) / Tempo Total · Meta ≥ 97.2%</div>
     <div style="overflow-x:auto">
       <table class="tbl"><thead><tr>
         <th>Linha</th><th>Falhas</th><th>H. Reparo</th><th>MTTR (h)</th><th>H. Operando</th><th>MTBF (h)</th><th>Disponibilidade</th><th>Barra</th>
@@ -709,6 +709,21 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
     <div class="ccard"><div class="ctit">MTBF e MTTR por Linha</div><div class="csub">horas entre falhas vs tempo de reparo</div><div class="ch"><canvas id="cMTBF"></canvas></div></div>
     <div class="ccard"><div class="ctit">Disponibilidade por Linha</div><div class="csub">% — meta ≥ 85%</div><div class="ch"><canvas id="cDispLinha"></canvas></div></div>
   </div>
+  <!-- Tabela detalhada de eventos de manutenção com descrição -->
+  <div class="st">📋 Eventos de Manutenção — Detalhado</div>
+  <div class="ccard" style="margin-bottom:18px">
+    <div class="ctit">Registro Detalhado de Manutenção</div>
+    <div class="csub">Todos os eventos com descrição completa — ordenado por duração</div>
+    <div style="overflow-x:auto;max-height:360px;overflow-y:auto">
+      <table class="ptable">
+        <thead><tr>
+          <th>Linha</th><th>Motivo</th><th>Descrição</th><th>Início</th><th>Turno</th><th>Duração</th><th>Dia Prod.</th>
+        </tr></thead>
+        <tbody id="mntDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="cgrid c2">
     <div class="ccard"><div class="ctit">Top Motivos de Manutenção</div><div class="csub">por horas totais</div><div class="ch"><canvas id="cMntMot"></canvas></div></div>
     <div class="ccard"><div class="ctit">Manutenção Diária por Linha</div><div class="csub">evolução de horas de reparo</div><div class="ch"><canvas id="cMntDia"></canvas></div></div>
@@ -1837,8 +1852,8 @@ function updateManutencao(){
   document.getElementById('mHoras').textContent=repH.toFixed(2)+'h';
   document.getElementById('mMax').textContent=(maxR/60).toFixed(2)+'h';
   const mb=mtbf>=8?'good':mtbf>=4?'warn':'bad',ml=mtbf>=8?'Bom':mtbf>=4?'Atenção':'Crítico';
-  const tb=mttr<=3?'good':mttr<=5?'warn':'bad',tl=mttr<=3?'Bom ≤3h':mttr<=5?'Atenção >3h':'Crítico >5h';
-  const db2=disp>=96?'good':disp>=90?'warn':'bad',dl=disp>=96?'Ótimo ≥96%':disp>=90?'Atenção <96%':'Crítico <90%';
+  const tb=mttr<=1.5?'good':mttr<=3?'warn':'bad',tl=mttr<=1.5?'Bom ≤1.5h':mttr<=3?'Atenção >1.5h':'Crítico >3h';
+  const db2=disp>=97.2?'good':disp>=95?'warn':'bad',dl=disp>=97.2?'Ótimo ≥97.2%':disp>=95?'Atenção <97.2%':'Crítico <95%';
   document.getElementById('mMTBFb').innerHTML=`<span class="kbadge ${mb}">${ml}</span>`;
   document.getElementById('mMTTRb').innerHTML=`<span class="kbadge ${tb}">${tl}</span>`;
   document.getElementById('mDispb').innerHTML=`<span class="kbadge ${db2}">${dl}</span>`;
@@ -1856,7 +1871,7 @@ function updateManutencao(){
     const lmtbf=ln>0?Math.max(0,pHL-lrH)/ln:pHL;
     // Disponibilidade de Manutenção = (pHL - horas só de manutenção) / pHL
     const ld=pHL>0?(Math.max(0,pHL-lrH)/pHL)*100:100;
-    const dc=ld>=96?'#024f2b':ld>=90?'#739630':'#c0392b';
+    const dc=ld>=97.2?'#024f2b':ld>=95?'#739630':'#c0392b';
     document.getElementById('maintBody').innerHTML+=`<tr>
       <td style="font-weight:800;color:${LC[l]||'#024f2b'}">${l}</td>
       <td style="font-family:'DM Mono',monospace;font-weight:700;color:#c0392b">${ln}</td>
@@ -1868,6 +1883,34 @@ function updateManutencao(){
       <td title="Meta: ≥96%"><div class="prog-bg"><div class="prog-fill" style="width:${Math.min(100,ld).toFixed(1)}%;background:${dc}"></div></div></td>
     </tr>`;
   });
+
+  // ── Tabela detalhada com descrição ──
+  const mntDetail = fParadas.filter(d=>d.categoria==='Manutenção')
+    .slice().sort((a,b)=>b.duracao-a.duracao);
+  const mntDetailBody = document.getElementById('mntDetailBody');
+  if(mntDetailBody){
+    mntDetailBody.innerHTML='';
+    mntDetail.forEach(r=>{
+      const dp = (r.dia_prod||r.data||'');
+      const dpLabel = dp.length>=10 ? dp.slice(8)+'/'+dp.slice(5,7) : dp;
+      const dur = (r.duracao/60).toFixed(2);
+      const durColor = r.duracao/60 <= 1.5 ? 'var(--gdk)' : r.duracao/60 <= 3 ? 'var(--amber)' : 'var(--red)';
+      mntDetailBody.innerHTML+=`<tr>
+        <td style="font-weight:800;color:${LC[r.linha]||'var(--gdk)'};">${r.linha}</td>
+        <td style="font-weight:700;max-width:160px;word-break:break-word">${r.motivo}</td>
+        <td style="color:var(--muted);font-size:.72rem;max-width:200px;word-break:break-word">
+          ${r.descricao && r.descricao!=='nan' && r.descricao!=='-' ? r.descricao : '<em style="color:var(--border)">—</em>'}
+        </td>
+        <td style="font-family:'DM Mono',monospace;font-size:.72rem;white-space:nowrap">${r.inicio}</td>
+        <td><span class="bturno bt${r.turno}">T${r.turno}</span></td>
+        <td style="font-family:'DM Mono',monospace;font-weight:800;color:${durColor}">${dur}h</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--muted)">${dpLabel}</td>
+      </tr>`;
+    });
+    if(!mntDetail.length){
+      mntDetailBody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Nenhum evento de manutenção no período</td></tr>';
+    }
+  }
 
   destroyChart('cMntOp');
   charts['cMntOp']=new Chart(document.getElementById('cMntOp'),{type:'bar',
@@ -1897,11 +1940,11 @@ function updateManutencao(){
     const lpD=fParadas.filter(d=>d.linha===l&&!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
     return+(pHL>0?(Math.max(0,pHL-lpD)/pHL)*100:100).toFixed(1);
   });
-  const dispC=dispA.map(v=>v>=96?'#024f2b':v>=90?'#739630':'#c0392b');
+  const dispC=dispA.map(v=>v>=97.2?'#024f2b':v>=95?'#739630':'#c0392b');
   charts['cDispLinha']=new Chart(document.getElementById('cDispLinha'),{type:'bar',
     data:{labels:ll,datasets:[
       {label:'Disponibilidade (%)',data:dispA,backgroundColor:dispC.map(c=>c+'cc'),borderColor:dispC,borderWidth:2,borderRadius:7},
-      {label:'Meta 96%',data:ll.map(()=>96),type:'line',borderColor:'#d97706',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false}]},
+      {label:'Meta 97.2%',data:ll.map(()=>97.2),type:'line',borderColor:'#d97706',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false}]},
     options:{plugins:{legend:{labels:{color:'#444',font:{family:'DM Mono',size:9},boxWidth:10}}},
       scales:{x:{ticks:bT,grid:bG},y:{ticks:bT,grid:bG,min:0,max:100,title:{display:true,text:'%',color:tc,font:{size:10}}}}}});
 
@@ -2599,7 +2642,7 @@ function tvCalcOEE(dia, linha){
 
 // ── OEE color ──
 function tvOEEColor(v){ return v>=85?'#739630':v>=70?'#d97706':'#c0392b'; }
-function tvDispColor(v){ return v>=96?'#739630':v>=90?'#d97706':'#c0392b'; }
+function tvDispColor(v){ return v>=97.2?'#739630':v>=95?'#d97706':'#c0392b'; }
 
 // ── Modo ──
 function tvSetMode(mode){
@@ -2674,7 +2717,7 @@ function tvRender(){
       <div class="tv-kpi"><div class="tv-kpi-lbl">H. Paradas</div><div class="tv-kpi-val" style="color:var(--red)">${hPar.toFixed(2)}h</div><div class="tv-kpi-unit">não planejadas</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">H. Planejadas</div><div class="tv-kpi-val" style="color:var(--muted)">${hPlan.toFixed(2)}h</div><div class="tv-kpi-unit">programadas</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">Disponib. Mnt</div><div class="tv-kpi-val" style="color:${tvDispColor(dispG)}">${dispG.toFixed(1)}%</div><div class="tv-kpi-unit">meta ≥96%</div></div>
-      <div class="tv-kpi"><div class="tv-kpi-lbl">MTTR</div><div class="tv-kpi-val" style="color:${mttr<=3?'var(--gdk)':mttr<=5?'var(--amber)':'var(--red)'}">${mttr.toFixed(2)}h</div><div class="tv-kpi-unit">meta ≤3h</div></div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">MTTR</div><div class="tv-kpi-val" style="color:${mttr<=1.5?'var(--gdk)':mttr<=3?'var(--amber)':'var(--red)'}">${mttr.toFixed(2)}h</div><div class="tv-kpi-unit">meta ≤3h</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">OEE Geral</div><div class="tv-kpi-val" style="color:${tvOEEColor(oeeMed)}">${oeeMed.toFixed(1)}%</div><div class="tv-kpi-unit">média linhas</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">Eventos</div><div class="tv-kpi-val" style="color:var(--muted)">${par.length}</div><div class="tv-kpi-unit">paradas</div></div>`;
   }
@@ -2936,7 +2979,7 @@ function tvFRender(){
       <div class="tv-f-kpi"><div class="tv-f-kpi-l">% Meta</div><div class="tv-f-kpi-v" style="color:${totalMeta>0&&totalProd/totalMeta>=.85?'#a8d060':'#f87171'}">${totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—'}</div><div class="tv-f-kpi-u">real/meta</div></div>
       <div class="tv-f-kpi"><div class="tv-f-kpi-l">H. Paradas</div><div class="tv-f-kpi-v" style="color:#f87171">${hPar.toFixed(2)}h</div><div class="tv-f-kpi-u">não planejadas</div></div>
       <div class="tv-f-kpi"><div class="tv-f-kpi-l">H. Planejadas</div><div class="tv-f-kpi-v" style="color:#6b9e7a">${hPlan.toFixed(2)}h</div><div class="tv-f-kpi-u">programadas</div></div>
-      <div class="tv-f-kpi"><div class="tv-f-kpi-l">Disponib.</div><div class="tv-f-kpi-v" style="color:${dispG>=96?'#a8d060':dispG>=90?'#fbbf24':'#f87171'}">${dispG.toFixed(1)}%</div><div class="tv-f-kpi-u">meta ≥96%</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">Disponib.</div><div class="tv-f-kpi-v" style="color:${dispG>=97.2?'#a8d060':dispG>=95?'#fbbf24':'#f87171'}">${dispG.toFixed(1)}%</div><div class="tv-f-kpi-u">meta ≥96%</div></div>
       <div class="tv-f-kpi"><div class="tv-f-kpi-l">OEE Geral</div><div class="tv-f-kpi-v" style="color:${tvOEEColor(oeeMed)}">${oeeMed.toFixed(1)}%</div><div class="tv-f-kpi-u">média</div></div>`;
   }
 
@@ -3027,7 +3070,7 @@ function tvOpenModal(linha){
   // OEE destrinchado
   const oeeColor = tvOEEColor(oee);
   document.getElementById('tvMDisp').textContent = disp.toFixed(1)+'%';
-  document.getElementById('tvMDisp').style.color = disp>=96?'var(--gdk)':disp>=90?'var(--amber)':'var(--red)';
+  document.getElementById('tvMDisp').style.color = disp>=97.2?'var(--gdk)':disp>=95?'var(--amber)':'var(--red)';
   document.getElementById('tvMPerf').textContent = perf.toFixed(1)+'%';
   document.getElementById('tvMPerf').style.color = perf>=85?'var(--gdk)':perf>=70?'var(--amber)':'var(--red)';
   document.getElementById('tvMQual').textContent = qual.toFixed(1)+'%';
