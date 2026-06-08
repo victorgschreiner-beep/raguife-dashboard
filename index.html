@@ -2704,7 +2704,10 @@ function tvRender(){
     const mntH      = mnt.reduce((s,d)=>s+d.duracao/60,0);
     const nMntUniq  = new Set(mnt.map(d=>d.evento_id||d.linha+'|'+d.inicio_orig+'|'+d.motivo)).size;
     const mttr      = nMntUniq>0?mntH/nMntUniq:0;
-    const pHL4      = dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size)*24:24;
+    // pHL4 = dias × 24h × nLinhas (tempo total de todas as linhas)
+    const nDiasPHL  = dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size):1;
+    const nLinhasPHL= new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
+    const pHL4      = nDiasPHL * 24 * nLinhasPHL;
     const dispG     = pHL4>0?(Math.max(0,pHL4-mntH)/pHL4)*100:100;
     const oeeMed    = LINHAS.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/LINHAS.length;
     // OEE geral = média das linhas que estavam operando (exclui paradas 100% planejadas)
@@ -2723,7 +2726,7 @@ function tvRender(){
       <div class="tv-kpi"><div class="tv-kpi-lbl">% Meta</div><div class="tv-kpi-val" style="color:${totalMeta>0&&totalProd/totalMeta>=.85?'var(--gdk)':'var(--red)'}">${totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—'}</div><div class="tv-kpi-unit">real/meta</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">H. Paradas</div><div class="tv-kpi-val" style="color:var(--red)">${hPar.toFixed(2)}h</div><div class="tv-kpi-unit">não planejadas</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">H. Planejadas</div><div class="tv-kpi-val" style="color:var(--muted)">${hPlan.toFixed(2)}h</div><div class="tv-kpi-unit">programadas</div></div>
-      <div class="tv-kpi"><div class="tv-kpi-lbl">Disponib. Mnt</div><div class="tv-kpi-val" style="color:${tvDispColor(dispG)}">${dispG.toFixed(1)}%</div><div class="tv-kpi-unit">meta ≥96%</div></div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">Disponib. Mnt</div><div class="tv-kpi-val" style="color:${tvDispColor(dispG)}">${dispG.toFixed(1)}%</div><div class="tv-kpi-unit">meta ≥97.2%</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">MTTR</div><div class="tv-kpi-val" style="color:${mttr<=1.5?'var(--gdk)':mttr<=3?'var(--amber)':'var(--red)'}">${mttr.toFixed(2)}h</div><div class="tv-kpi-unit">meta ≤3h</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">OEE Geral</div><div class="tv-kpi-val" style="color:${tvOEEColor(oeeMed)}">${oeeMed.toFixed(1)}%</div><div class="tv-kpi-unit">média linhas</div></div>
       <div class="tv-kpi"><div class="tv-kpi-lbl">Eventos</div><div class="tv-kpi-val" style="color:var(--muted)">${par.length}</div><div class="tv-kpi-unit">paradas</div></div>`;
@@ -2977,7 +2980,11 @@ function tvFRender(){
     const mntH=mnt.reduce((s,d)=>s+d.duracao/60,0);
     const nMntU=new Set(mnt.map(d=>d.evento_id||d.linha+'|'+d.inicio_orig+'|'+d.motivo)).size;
     const mttr=nMntU>0?mntH/nMntU:0;
-    const dispG=24>0?(Math.max(0,24-mntH)/24)*100:100;
+    // Tempo total = dias × 24h × nLinhas
+    const nDiasF  = Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size);
+    const nLF     = new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
+    const pHLF    = nDiasF * 24 * nLF;
+    const dispG   = pHLF>0?(Math.max(0,pHLF-mntH)/pHLF)*100:100;
     const linhasValidasF=tvLinhasOEEValidas(dia);
     const oeeMed=linhasValidasF.length?linhasValidasF.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasValidasF.length:0;
     const totPerc=perc.reduce((s,d)=>s+d.quantidade,0);
@@ -3076,6 +3083,7 @@ function tvOpenModal(linha){
 
   // OEE destrinchado
   const oeeColor = tvOEEColor(oee);
+  // Disponibilidade OEE (sem setup/planejadas) — para o cálculo do OEE
   document.getElementById('tvMDisp').textContent = disp.toFixed(1)+'%';
   document.getElementById('tvMDisp').style.color = disp>=97.2?'var(--gdk)':disp>=95?'var(--amber)':'var(--red)';
   document.getElementById('tvMPerf').textContent = perf.toFixed(1)+'%';
