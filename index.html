@@ -2604,6 +2604,32 @@ function linhasOEEValidasGeral(){
 }
 
 // ═══════════════════════ INIT ═══════════════════════
+
+// ═══════════════════════ UPDATE ALL ═══════════════════════
+function updateAll(){
+  const active = document.querySelector('.page.active');
+  if(!active) return;
+  const id = active.id.replace('page-','');
+  if(id==='visao')       updateVisao();
+  if(id==='producao')    updateProducao();
+  if(id==='perdas')      updatePerdas();
+  if(id==='manutencao')  updateManutencao();
+  if(id==='comparativo') updateComparativo();
+  if(id==='percas')      updatePercas();
+  if(id==='oee_diario')  updateOEEDiario();
+  if(id==='detalhe'){
+    initDetFiltros();
+    renderParadasAll();
+  }
+  if(id==='tv'){
+    setTimeout(()=>{
+      tvInitDias();
+      tvSetMode('reuniao');
+      tvRender();
+      tvUpdatePips();
+    }, 50);
+  }
+}
 Chart.defaults.font.family='DM Mono';
 Chart.defaults.color='#666';
 fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];
