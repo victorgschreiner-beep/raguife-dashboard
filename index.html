@@ -2605,6 +2605,474 @@ function linhasOEEValidasGeral(){
 
 // ═══════════════════════ INIT ═══════════════════════
 
+// ═══════════════════════ TV / APRESENTAÇÃO ═══════════════════════
+const TV_SLIDES = 4;
+let tvCurrentSlide = 0;
+let tvAutoTimer    = null;
+let tvCountdown    = 0;
+let tvCountTick    = null;
+let tvFMode        = false;
+let tvFInterval    = null;
+let tvFClockTick   = null;
+
+function tvLinhasOEEValidas(dia){
+  return LINHAS.filter(l=>{
+    const prod=tvGetProdDia(dia).filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
+    const par =tvGetParDia(dia).filter(d=>d.linha===l);
+    if(prod>0) return true;
+    return par.some(d=>!CATS_EXCL_DISP.includes(d.categoria));
+  });
+}
+
+function tvInitDias(){
+  const dias=[...new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean))].sort();
+  const sel=document.getElementById('tvDiaSel');
+  if(!sel) return;
+  const currVal=sel.value;
+  sel.innerHTML='<option value="all">Todos os dias</option>';
+  dias.forEach(d=>{
+    const o=document.createElement('option');
+    o.value=d;
+    o.textContent=d.slice(8)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
+    sel.appendChild(o);
+  });
+  if(dias.includes(currVal)) sel.value=currVal;
+  else if(dias.length) sel.value=dias[dias.length-1];
+}
+
+function tvGetDia(){ const sel=document.getElementById('tvDiaSel'); return sel?sel.value:'all'; }
+
+function tvGetParDia(dia){
+  return dia==='all'?RAW_PARADAS:RAW_PARADAS.filter(d=>d.dia_prod===dia);
+}
+function tvGetProdDia(dia){
+  if(dia==='all') return RAW_PRODUCAO;
+  const mmdd=dia.slice(5);
+  return RAW_PRODUCAO.filter(d=>d.dia_prod===dia||d.data===dia||(d.data&&d.data.slice(5)===mmdd));
+}
+function tvGetPercDia(dia){
+  if(dia==='all') return RAW_REPROCESSO;
+  const mmdd=dia.slice(5);
+  return RAW_REPROCESSO.filter(d=>(d.dia_prod||d.data)===dia||d.data===dia||(d.data&&d.data.slice(5)===mmdd));
+}
+function tvFmtDia(dia){
+  if(!dia||dia==='all') return 'Todos os dias';
+  return dia.slice(8)+'/'+dia.slice(5,7)+'/'+dia.slice(0,4);
+}
+
+function tvCalcOEE(dia,linha){
+  const nDias=dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size):1;
+  const pHL=nDias*24;
+  const par =tvGetParDia(dia).filter(d=>d.linha===linha);
+  const prod=tvGetProdDia(dia).filter(d=>d.linha===linha);
+  const perc=tvGetPercDia(dia).filter(d=>d.linha===linha);
+  const pD  =par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+  const disp=Math.max(0,Math.min(1,(pHL-pD)/pHL));
+  const real=prod.reduce((s,d)=>s+d.quantidade,0);
+  const meta=prod.reduce((s,d)=>s+(d.meta||0),0);
+  const perf=meta>0?Math.min(1,real/meta):(real>0?1:0);
+  const percs=perc.reduce((s,d)=>s+d.quantidade,0);
+  const qual=real>0?Math.max(0,(real-percs)/real):1;
+  return{oee:disp*perf*qual*100,disp:disp*100,perf:perf*100,qual:qual*100,real,meta,percs,pD};
+}
+
+function tvOEEColor(v){ return v>=85?'var(--glt)':v>=70?'var(--amber)':'var(--red)'; }
+function tvDispColor(v){ return v>=97.8?'var(--glt)':v>=95?'var(--amber)':'var(--red)'; }
+
+function tvSetMode(mode){
+  document.getElementById('tvBtnReuniao')?.classList.toggle('active',mode==='reuniao');
+  document.getElementById('tvBtnFabrica')?.classList.toggle('active',mode==='fabrica');
+  const nav=document.getElementById('tvSlideNav');
+  if(nav) nav.style.display=mode==='reuniao'?'flex':'none';
+}
+
+function tvRender(){
+  const dia   =tvGetDia();
+  const diaLbl=tvFmtDia(dia);
+  const par   =tvGetParDia(dia);
+  const prod  =tvGetProdDia(dia);
+
+  // Labels slides
+  ['tvDiaLabel0','tvDiaLabel1','tvDiaLabel2','tvDiaLabel3'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent=diaLbl;
+  });
+
+  // ── SLIDE 1: OEE Grid ──
+  const oeeGrid=document.getElementById('tvOEEGrid');
+  if(oeeGrid){
+    oeeGrid.innerHTML='';
+    LINHAS.forEach(l=>{
+      const{oee,disp,perf,qual}=tvCalcOEE(dia,l);
+      const cor=tvOEEColor(oee);
+      const lc=LC[l]||'#024f2b';
+      oeeGrid.innerHTML+=`
+        <div class="tv-oee-card" style="--lc:${lc};cursor:pointer;transition:transform .2s,box-shadow .2s"
+          onclick="tvOpenModal('${l}')"
+          onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 32px rgba(0,0,0,.2)'"
+          onmouseleave="this.style.transform='';this.style.boxShadow=''">
+          <div class="tv-oee-linha">${l}</div>
+          <div class="tv-oee-val" style="color:${cor}">${oee.toFixed(1)}%</div>
+          <div class="tv-oee-bar-bg">
+            <div class="tv-oee-bar-fill" style="width:${Math.min(100,oee).toFixed(1)}%;background:${cor}"></div>
+          </div>
+        </div>`;
+    });
+  }
+
+  // KPIs slide 1
+  const kpiGrid=document.getElementById('tvKPIGrid');
+  if(kpiGrid){
+    const totalProd=prod.reduce((s,d)=>s+d.quantidade,0);
+    const totalMeta=prod.reduce((s,d)=>s+(d.meta||0),0);
+    const hPar=par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const hPlan=par.filter(d=>d.categoria==='Fator Externo/Parada Planejada').reduce((s,d)=>s+d.duracao/60,0);
+    const mnt=par.filter(d=>d.categoria==='Manutenção');
+    const mntH=mnt.reduce((s,d)=>s+d.duracao/60,0);
+    const nMntU=new Set(mnt.map(d=>d.evento_id||d.linha+'|'+d.inicio_orig+'|'+d.motivo)).size;
+    const mttr=nMntU>0?mntH/nMntU:0;
+    const nDiasP=dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size):1;
+    const nLP=new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
+    const pHL4=nDiasP*24*nLP;
+    const dispG=pHL4>0?(Math.max(0,pHL4-mntH)/pHL4)*100:100;
+    const linhasV=tvLinhasOEEValidas(dia);
+    const oeeMed=linhasV.length?linhasV.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasV.length:0;
+    kpiGrid.innerHTML=`
+      <div class="tv-kpi" style="border-top:3px solid ${tvOEEColor(oeeMed)}">
+        <div class="tv-kpi-lbl">OEE Geral</div>
+        <div class="tv-kpi-val" style="color:${tvOEEColor(oeeMed)}">${oeeMed.toFixed(1)}%</div>
+        <div class="tv-kpi-unit">média linhas operando</div>
+      </div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">Produção</div><div class="tv-kpi-val" style="color:var(--gdk)">${fmtKg(totalProd)}</div><div class="tv-kpi-unit">kg</div></div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">% Meta</div><div class="tv-kpi-val" style="color:${totalMeta>0&&totalProd/totalMeta>=.85?'var(--gdk)':'var(--red)'}">${totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—'}</div><div class="tv-kpi-unit">real/meta</div></div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">H. Paradas</div><div class="tv-kpi-val" style="color:var(--red)">${hPar.toFixed(2)}h</div><div class="tv-kpi-unit">não planejadas</div></div>
+      <div class="tv-kpi"><div class="tv-kpi-lbl">H. Planejadas</div><div class="tv-kpi-val" style="color:var(--muted)">${hPlan.toFixed(2)}h</div><div class="tv-kpi-unit">programadas</div></div>`;
+  }
+
+  // ── SLIDE 2: Maiores Paradas ──
+  const parList=document.getElementById('tvParList');
+  if(parList){
+    const byKey={};
+    par.forEach(r=>{
+      const k=r.linha+'|'+(r.evento_id||r.motivo);
+      if(!byKey[k]){byKey[k]={...r,duracao:0,n:0};}
+      byKey[k].duracao+=r.duracao;byKey[k].n++;
+    });
+    const top8=Object.values(byKey).sort((a,b)=>b.duracao-a.duracao).slice(0,8);
+    parList.innerHTML='';
+    top8.forEach((r,i)=>{
+      const cls=r.categoria==='Manutenção'?'mnt':r.categoria==='Setup'?'setup':r.categoria.includes('Externo')?'ext':'';
+      const cor=CC[r.categoria]||'#024f2b';
+      parList.innerHTML+=`
+        <div class="tv-par-item ${cls}">
+          <div class="tv-par-rank">#${i+1}</div>
+          <div class="tv-par-info">
+            <div class="tv-par-motivo">${r.motivo}</div>
+            <div class="tv-par-meta">${r.linha} · <span class="badge" style="background:${cor}22;color:${cor}">${r.categoria.split('/')[0]}</span> · ${r.n} evento${r.n>1?'s':''}</div>
+          </div>
+          <div class="tv-par-dur">${(r.duracao/60).toFixed(2)}<span>h</span></div>
+        </div>`;
+    });
+    if(!top8.length) parList.innerHTML='<div style="text-align:center;color:var(--muted);padding:40px;font-size:1rem">✅ Nenhuma parada neste dia</div>';
+  }
+
+  // ── SLIDE 3: Produção vs Meta ──
+  const prodGrid=document.getElementById('tvProdGrid');
+  if(prodGrid){
+    prodGrid.innerHTML='';
+    LINHAS.forEach(l=>{
+      const real=prod.filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
+      const meta=prod.filter(d=>d.linha===l).reduce((s,d)=>s+(d.meta||0),0);
+      const pct=meta>0?(real/meta*100).toFixed(1)+'%':'—';
+      const pctN=meta>0?real/meta*100:0;
+      const cor=pctN>=100?'var(--gdk)':pctN>=85?'var(--glt)':pctN>=70?'var(--amber)':'var(--red)';
+      const lc=LC[l]||'#024f2b';
+      prodGrid.innerHTML+=`
+        <div class="tv-comp-card" style="border-top:3px solid ${lc}">
+          <div class="tv-comp-title">${l}</div>
+          <div style="font-size:2rem;font-weight:900;color:${lc}">${fmtKg(real)}</div>
+          <div style="font-size:.72rem;color:var(--muted);font-family:'DM Mono',monospace">Meta: ${fmtKg(meta)}</div>
+          <div class="tv-delta">
+            <div class="tv-delta-val" style="color:${cor}">${pct}</div>
+            <div class="tv-delta-arrow">${pctN>=100?'✅':pctN>=85?'⚠️':'❌'}</div>
+          </div>
+          <div style="height:8px;background:var(--border);border-radius:4px;margin-top:8px;overflow:hidden">
+            <div style="height:100%;width:${Math.min(100,pctN).toFixed(1)}%;background:${cor};border-radius:4px;transition:width .8s"></div>
+          </div>
+        </div>`;
+    });
+  }
+
+  // ── SLIDE 4: Comparativo dia atual vs anterior ──
+  const compGrid=document.getElementById('tvCompGrid');
+  if(compGrid&&dia!=='all'){
+    const dias=[...new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean))].sort();
+    const idx=dias.indexOf(dia);
+    const diaPrev=idx>0?dias[idx-1]:null;
+    const parPrev=diaPrev?tvGetParDia(diaPrev):[];
+    const prodPrev=diaPrev?tvGetProdDia(diaPrev):[];
+    const mkComp=(label,curr,prev,unit,inv)=>{
+      const diff=prev>0?((curr-prev)/prev*100):0;
+      const up=diff>=0;
+      const cor=inv?(up?'var(--red)':'var(--gdk)'):(up?'var(--gdk)':'var(--red)');
+      return`<div class="tv-comp-card">
+        <div class="tv-comp-title">${label}</div>
+        <div style="font-size:1.8rem;font-weight:900">${unit==='kg'?fmtKg(curr):curr.toFixed(2)+unit}</div>
+        ${diaPrev?`<div style="font-size:.68rem;color:var(--muted);font-family:'DM Mono',monospace">Anterior (${tvFmtDia(diaPrev)}): ${unit==='kg'?fmtKg(prev):prev.toFixed(2)+unit}</div>
+        <div class="tv-delta"><div class="tv-delta-val" style="color:${cor}">${up?'▲':'▼'} ${Math.abs(diff).toFixed(1)}%</div></div>`
+        :'<div style="font-size:.68rem;color:var(--muted)">Primeiro dia do período</div>'}
+      </div>`;
+    };
+    const currProd=prod.reduce((s,d)=>s+d.quantidade,0);
+    const prevProd=prodPrev.reduce((s,d)=>s+d.quantidade,0);
+    const currHPar=par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const prevHPar=parPrev.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const lv1=tvLinhasOEEValidas(dia),lv2=diaPrev?tvLinhasOEEValidas(diaPrev):[];
+    const currOEE=lv1.length?lv1.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/lv1.length:0;
+    const prevOEE=lv2.length?lv2.map(l=>tvCalcOEE(diaPrev,l).oee).reduce((a,b)=>a+b,0)/lv2.length:0;
+    compGrid.innerHTML=
+      mkComp('🏭 Produção',currProd,prevProd,'kg',false)+
+      mkComp('⏱️ H. Paradas',currHPar,prevHPar,'h',true)+
+      mkComp('🎯 OEE Geral',currOEE,prevOEE,'%',false)+
+      mkComp('📋 Eventos',par.length,parPrev.length,'',true);
+  }else if(compGrid){
+    compGrid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:40px">Selecione um dia específico para ver o comparativo</div>';
+  }
+
+  tvUpdatePips();
+}
+
+// ── Navegação slides ──
+function tvUpdatePips(){
+  const pips=document.getElementById('tvPips');
+  if(!pips) return;
+  pips.innerHTML='';
+  for(let i=0;i<TV_SLIDES;i++){
+    const d=document.createElement('div');
+    d.className='slide-pip'+(i===tvCurrentSlide?' active':'');
+    d.onclick=()=>tvGoTo(i);
+    pips.appendChild(d);
+  }
+  const info=`Slide ${tvCurrentSlide+1}/${TV_SLIDES}`;
+  ['tvSlideInfo','tvSlideInfo2'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=info;});
+  const pf=document.getElementById('tvProgFill');
+  if(pf)pf.style.width=((tvCurrentSlide+1)/TV_SLIDES*100)+'%';
+}
+
+function tvGoTo(idx){
+  document.querySelectorAll('.slide').forEach((s,i)=>s.classList.toggle('active',i===idx));
+  tvCurrentSlide=idx;
+  tvUpdatePips();
+}
+function tvNext(){ tvGoTo((tvCurrentSlide+1)%TV_SLIDES); }
+function tvPrev(){ tvGoTo((tvCurrentSlide-1+TV_SLIDES)%TV_SLIDES); }
+
+function tvToggleAuto(){
+  const btn=document.getElementById('tvPlayBtn');
+  if(tvAutoTimer){
+    clearInterval(tvAutoTimer);clearInterval(tvCountTick);
+    tvAutoTimer=null;
+    if(btn){btn.textContent='▶ Auto';btn.classList.remove('active');}
+    const td=document.getElementById('tvTimerDisplay');if(td)td.textContent='';
+  }else{
+    const sec=parseInt(document.getElementById('tvIntervalo')?.value||15);
+    tvCountdown=sec;
+    if(btn){btn.textContent='⏸ Pausar';btn.classList.add('active');}
+    tvCountTick=setInterval(()=>{
+      tvCountdown--;
+      const td=document.getElementById('tvTimerDisplay');
+      if(td)td.textContent=`Próximo em ${tvCountdown}s`;
+      if(tvCountdown<=0)tvCountdown=sec;
+    },1000);
+    tvAutoTimer=setInterval(()=>{tvNext();tvCountdown=sec;},sec*1000);
+  }
+}
+
+// ── Tela Cheia ──
+function tvFullscreen(){
+  const div=document.getElementById('tvFullscreenDiv');
+  const btn=document.getElementById('tvExitBtn');
+  if(!div)return;
+  div.classList.add('active');
+  if(btn)btn.classList.add('show');
+  tvFMode=true;
+  tvFRender();
+  tvFStartClock();
+  tvFStartRefresh();
+  document.documentElement.requestFullscreen?.().catch(()=>{});
+}
+
+function tvExitFullscreen(){
+  const div=document.getElementById('tvFullscreenDiv');
+  const btn=document.getElementById('tvExitBtn');
+  if(div)div.classList.remove('active');
+  if(btn)btn.classList.remove('show');
+  tvFMode=false;
+  clearInterval(tvFInterval);clearInterval(tvFClockTick);
+  document.exitFullscreen?.().catch(()=>{});
+}
+
+function tvFStartClock(){
+  clearInterval(tvFClockTick);
+  function update(){
+    const now=new Date();
+    const clk=document.getElementById('tvFClock');
+    const dt=document.getElementById('tvFDate');
+    const trn=document.getElementById('tvFTurno');
+    if(clk)clk.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+    if(dt)dt.textContent=String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear();
+    const h=now.getHours();
+    if(trn)trn.textContent=h>=5&&h<13?'T2 · 05h–13h':h>=13&&h<21?'T3 · 13h–21h':'T1 · 21h–05h';
+  }
+  update();tvFClockTick=setInterval(update,1000);
+}
+
+function tvFStartRefresh(){
+  clearInterval(tvFInterval);
+  tvFRender();
+  tvFInterval=setInterval(()=>{
+    if(window._db){
+      window._db.ref('dados').get().then(snap=>{
+        if(snap.exists()){
+          const d=snap.val();
+          const toArr=v=>Array.isArray(v)?v:Object.values(v||{});
+          RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
+          RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
+          RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
+          const sync=document.getElementById('tvFSync');
+          if(sync){const n=new Date();sync.textContent='Sync: '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+        }
+        tvFRender();
+      }).catch(()=>tvFRender());
+    }else{tvFRender();}
+  },60000);
+}
+
+function tvFRender(){
+  const now=new Date();
+  const diaHoje=now.getHours()>=21?(new Date(now.getTime()+86400000)).toISOString().slice(0,10):now.toISOString().slice(0,10);
+  const diasDisp=[...new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean))].sort();
+  const dia=diasDisp.includes(diaHoje)?diaHoje:(diasDisp[diasDisp.length-1]||'all');
+  const par=tvGetParDia(dia);
+  const prod=tvGetProdDia(dia);
+  const perc=tvGetPercDia(dia);
+
+  const dpLbl=document.getElementById('tvFDiaProd');
+  if(dpLbl)dpLbl.textContent='Dia Produtivo: '+tvFmtDia(dia)+' · '+par.length+' paradas';
+
+  // OEE por linha
+  const oeeGrid=document.getElementById('tvFOEEGrid');
+  if(oeeGrid){
+    oeeGrid.innerHTML='';
+    LINHAS.forEach(l=>{
+      const{oee,disp,perf,qual}=tvCalcOEE(dia,l);
+      const cor=tvOEEColor(oee);const lc=LC[l]||'#024f2b';
+      oeeGrid.innerHTML+=`
+        <div class="tv-f-oee-card" style="--lc:${lc}">
+          <div class="tv-f-oee-linha">${l}</div>
+          <div class="tv-f-oee-val" style="color:${cor}">${oee.toFixed(1)}%</div>
+          <div class="tv-f-oee-det">D:${disp.toFixed(1)}% · P:${perf.toFixed(1)}% · Q:${qual.toFixed(1)}%</div>
+          <div class="tv-f-bar-bg"><div class="tv-f-bar-fill" style="width:${Math.min(100,oee).toFixed(1)}%;background:${cor}"></div></div>
+        </div>`;
+    });
+  }
+
+  // KPIs tela cheia
+  const kGrid=document.getElementById('tvFKPIGrid');
+  if(kGrid){
+    const totalProd=prod.reduce((s,d)=>s+d.quantidade,0);
+    const totalMeta=prod.reduce((s,d)=>s+(d.meta||0),0);
+    const hPar=par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
+    const hPlan=par.filter(d=>d.categoria==='Fator Externo/Parada Planejada').reduce((s,d)=>s+d.duracao/60,0);
+    const mnt=par.filter(d=>d.categoria==='Manutenção');
+    const mntH=mnt.reduce((s,d)=>s+d.duracao/60,0);
+    const nMntU=new Set(mnt.map(d=>d.evento_id||d.linha+'|'+d.inicio_orig+'|'+d.motivo)).size;
+    const mttr=nMntU>0?mntH/nMntU:0;
+    const nDiasF=Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size);
+    const nLF=new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
+    const pHLF=nDiasF*24*nLF;
+    const dispG=pHLF>0?(Math.max(0,pHLF-mntH)/pHLF)*100:100;
+    const linhasV=tvLinhasOEEValidas(dia);
+    const oeeMed=linhasV.length?linhasV.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasV.length:0;
+    const totPerc=perc.reduce((s,d)=>s+d.quantidade,0);
+    kGrid.innerHTML=`
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">Produção</div><div class="tv-f-kpi-v" style="color:#a8d060">${fmtKg(totalProd)}</div><div class="tv-f-kpi-u">kg</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">% Meta</div><div class="tv-f-kpi-v" style="color:${totalMeta>0&&totalProd/totalMeta>=.85?'#a8d060':'#f87171'}">${totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—'}</div><div class="tv-f-kpi-u">real/meta</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">H. Paradas</div><div class="tv-f-kpi-v" style="color:#f87171">${hPar.toFixed(2)}h</div><div class="tv-f-kpi-u">não planejadas</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">H. Planejadas</div><div class="tv-f-kpi-v" style="color:#6b9e7a">${hPlan.toFixed(2)}h</div><div class="tv-f-kpi-u">programadas</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">Disponib.</div><div class="tv-f-kpi-v" style="color:${dispG>=97.8?'#a8d060':dispG>=95?'#fbbf24':'#f87171'}">${dispG.toFixed(1)}%</div><div class="tv-f-kpi-u">meta ≥97.8%</div></div>
+      <div class="tv-f-kpi"><div class="tv-f-kpi-l">OEE Geral</div><div class="tv-f-kpi-v" style="color:${tvOEEColor(oeeMed)}">${oeeMed.toFixed(1)}%</div><div class="tv-f-kpi-u">média</div></div>`;
+  }
+
+  // Últimas paradas
+  const parList=document.getElementById('tvFParList');
+  if(parList){
+    const sorted=par.slice().sort((a,b)=>{
+      const toTs=s=>{const m=s?.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);return m?new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]).getTime():0;};
+      return toTs(b.inicio)-toTs(a.inicio);
+    }).slice(0,6);
+    parList.innerHTML='';
+    sorted.forEach(r=>{
+      const cls=r.categoria==='Manutenção'?'mnt':r.categoria==='Setup'?'setup':'';
+      parList.innerHTML+=`<div class="tv-f-par-item ${cls}">
+        <div style="flex:1;min-width:0">
+          <div class="tv-f-par-motivo">${r.motivo.length>40?r.motivo.slice(0,40)+'…':r.motivo}</div>
+          <div class="tv-f-par-linha">${r.linha} · T${r.turno} · ${r.inicio?.split(' ')[1]||''}</div>
+        </div>
+        <div class="tv-f-par-dur">${(r.duracao/60).toFixed(2)}h</div>
+      </div>`;
+    });
+  }
+
+  // Top motivos
+  const motList=document.getElementById('tvFMotList');
+  if(motList){
+    const byM={};par.forEach(r=>{byM[r.motivo]=(byM[r.motivo]||0)+r.duracao/60;});
+    const top5=Object.entries(byM).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const maxH=top5[0]?top5[0][1]:1;
+    motList.innerHTML='';
+    top5.forEach(([m,h],i)=>{
+      motList.innerHTML+=`<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:3px">
+          <span style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${m}</span>
+          <span style="font-family:'DM Mono',monospace;color:#fbbf24;font-weight:800">${h.toFixed(2)}h</span>
+        </div>
+        <div style="height:6px;background:#1a3322;border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${(h/maxH*100).toFixed(1)}%;background:${['#024f2b','#739630','#2e7d57','#d97706','#c0392b'][i]};border-radius:3px"></div>
+        </div>
+      </div>`;
+    });
+  }
+
+  // Ticker
+  const ticker=document.getElementById('tvFTicker');
+  if(ticker){
+    const recentes=par.slice(-20);
+    let items='';
+    recentes.forEach(r=>{
+      items+=`<div class="tv-ticker-item">
+        <span class="tv-ticker-linha" style="color:${LC[r.linha]||'#a8d060'}">${r.linha}</span>
+        <span style="margin:0 6px;color:#1f4030">·</span>
+        <span class="tv-ticker-motivo">${r.motivo}</span>
+        <span style="margin:0 6px;color:#1f4030">·</span>
+        <span class="tv-ticker-dur">${(r.duracao/60).toFixed(2)}h</span>
+        <span style="margin:0 6px;color:#1f4030">·</span>
+        <span style="color:#6b9e7a">T${r.turno} ${r.inicio?.split(' ')[1]||''}</span>
+      </div>`;
+    });
+    ticker.innerHTML=items+items;
+    ticker.style.animationDuration=Math.max(20,recentes.length*4)+'s';
+  }
+}
+
+// Teclas
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&tvFMode){tvExitFullscreen();return;}
+  if(document.getElementById('page-tv')?.classList.contains('active')){
+    if(e.key==='ArrowRight') tvNext();
+    if(e.key==='ArrowLeft')  tvPrev();
+  }
+});
+
 // ═══════════════════════ UPDATE ALL ═══════════════════════
 function updateAll(){
   const active = document.querySelector('.page.active');
