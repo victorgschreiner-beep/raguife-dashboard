@@ -737,7 +737,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="cgrid c3">
     <div class="ccard"><div class="ctit">Manutenção vs Operacional</div><div class="csub">horas agrupadas por linha</div><div class="ch"><canvas id="cMntOp"></canvas></div></div>
     <div class="ccard"><div class="ctit">MTBF e MTTR por Linha</div><div class="csub">horas entre falhas vs tempo de reparo</div><div class="ch"><canvas id="cMTBF"></canvas></div></div>
-    <div class="ccard"><div class="ctit">Disponibilidade por Linha</div><div class="csub">% — meta ≥ 85%</div><div class="ch"><canvas id="cDispLinha"></canvas></div></div>
+    <div class="ccard"><div class="ctit">Disponibilidade por Linha</div><div class="csub">% disponibilidade de manutenção — meta ≥ 97.8%</div><div class="ch"><canvas id="cDispLinha"></canvas></div></div>
   </div>
   <!-- Tabela detalhada de eventos de manutenção com descrição -->
   <div class="st">📋 Eventos de Manutenção — Detalhado</div>
@@ -1994,9 +1994,11 @@ function updateManutencao(){
       scales:{x:{ticks:bT,grid:bG},y:{ticks:bT,grid:bG,title:{display:true,text:'Horas',color:tc,font:{size:10}}}}}});
 
   destroyChart('cDispLinha');
+  // Disponibilidade de Manutenção = (pHL - horas só de Manutenção) / pHL
+  // Igual ao cálculo da tabela — usa só categoria Manutenção
   const dispA=ll.map(l=>{
-    const lpD=fParadas.filter(d=>d.linha===l&&!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-    return+(pHL>0?(Math.max(0,pHL-lpD)/pHL)*100:100).toFixed(1);
+    const lrHg=fParadas.filter(d=>d.linha===l&&d.categoria==='Manutenção').reduce((s,d)=>s+d.duracao/60,0);
+    return+(pHL>0?(Math.max(0,pHL-lrHg)/pHL)*100:100).toFixed(1);
   });
   const dispC=dispA.map(v=>v>=97.8?'#024f2b':v>=95?'#739630':'#c0392b');
   charts['cDispLinha']=new Chart(document.getElementById('cDispLinha'),{type:'bar',
