@@ -616,6 +616,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   </div>
   <div class="st">📊 Indicadores Consolidados</div>
   <div class="kgrid">
+    <div class="kcard teal"><div class="klbl">Horas Totais Disponíveis</div><div class="kval sm" id="vHorasDisp">—</div><div class="kunit">Período − Paradas Programadas</div><div class="kico">🟢</div></div>
     <div class="kcard gdk"><div class="klbl">Produção Total</div><div class="kval sm" id="vProd">—</div><div class="kunit">kg no período</div><div class="kico">🏭</div></div>
     <div class="kcard glt"><div class="klbl">% Atingimento Meta</div><div class="kval sm" id="vMeta">—</div><div class="kunit">produção / meta</div><div class="kico">🎯</div></div>
     <div class="kcard red"><div class="klbl">Horas Perdidas</div><div class="kval sm" id="vHPerd">—</div><div class="kunit">Manutenção + Operacional</div><div class="kico">⏱️</div></div>
@@ -669,6 +670,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   </div>
   <div class="st">⏱️ Indicadores de Paradas</div>
   <div class="kgrid">
+    <div class="kcard teal"><div class="klbl">Horas Totais Disponíveis</div><div class="kval sm" id="horasDisp">—</div><div class="kunit">Período − Paradas Programadas</div><div class="kico">🟢</div></div>
     <div class="kcard red"><div class="klbl">Total Horas Paradas</div><div class="kval sm" id="perdTotal">—</div><div class="kunit">todas as categorias</div><div class="kico">⏱️</div></div>
     <div class="kcard gray"><div class="klbl">Não Planejadas</div><div class="kval sm" id="perdSemPlan">—</div><div class="kunit">Manutenção + Operacional</div><div class="kico">⚙️</div></div>
     <div class="kcard gray"><div class="klbl">Eventos</div><div class="kval sm" id="perdEventos">—</div><div class="kunit">registros (após split)</div><div class="kico">📋</div></div>
@@ -1572,20 +1574,59 @@ function showTab(name){
 
 // ═══════════════════════ HELPERS ═══════════════════════
 function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
-function periodHoursPerLinha(){
-  // Usa dia_prod (dia produtivo 21h→21h) para contar dias únicos
-  const src = fParadas.length ? fParadas : RAW_PARADAS;
-  if(!src.length) return 24; // 1 dia × 24h
-  const uDays = Math.max(1, new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-  return uDays * 24; // 24h por dia produtivo por linha (3 turnos × 8h)
+function horasPorDiaProdutivo(){
+  // Cada dia produtivo tem 24h (3 turnos × 8h). Se o filtro de Turno
+  // estiver restrito a um único turno, a janela disponível por dia
+  // cai para 8h — senão o cálculo de horas do período fica inflado
+  // (ex: filtrando só Turno 3 e ainda considerando 24h/dia).
+  const sel=document.getElementById('fTurno');
+  return (sel && sel.value!=='all') ? 8 : 24;
+}
+function diasComApontamento(linha){
+  // Conta apenas dias produtivos que TÊM apontamento de produção
+  // (RAW_PRODUCAO/fProd) — dias sem registro na planilha não entram
+  // no período disponível, mesmo que estejam dentro do range De/Até.
+  const turno=document.getElementById('fTurno')?document.getElementById('fTurno').value:'all';
+  let src = fProd.length ? fProd : RAW_PRODUCAO;
+  if(linha) src = src.filter(d=>d.linha===linha);
+  if(turno!=='all') src = src.filter(d=>String(d.turno)===String(turno));
+  return new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean));
+}
+function periodHoursPerLinha(linha){
+  // Usa dias com apontamento de produção (não apenas dias com registro de parada)
+  const hpd = horasPorDiaProdutivo();
+  const dias = diasComApontamento(linha);
+  if(!dias.size) return hpd; // sem apontamento → assume 1 dia (fallback)
+  return dias.size * hpd;
 }
 function periodHours(){
-  // Total horas = dias_produtivos × 24h × nLinhas
+  // Total horas = Σ (dias com apontamento de cada linha) × horas_do_dia(8h ou 24h)
+  // Soma por linha em vez de (dias únicos × nLinhas) porque cada linha pode
+  // ter dias diferentes com/sem apontamento de produção.
+  const hpd = horasPorDiaProdutivo();
   const src = fParadas.length ? fParadas : RAW_PARADAS;
-  if(!src.length) return 24 * 4;
-  const uDays = Math.max(1, new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-  const nL    = new Set(src.map(d=>d.linha).filter(Boolean)).size || 4;
-  return uDays * 24 * nL;
+  const linhas = [...new Set(src.map(d=>d.linha).filter(Boolean))];
+  const linhasRef = linhas.length ? linhas : ['Linha 1','Linha 2','Linha 4','Linha 5'];
+  let total=0;
+  linhasRef.forEach(l=>{ total += diasComApontamento(l).size * hpd; });
+  if(total===0){
+    // fallback: nenhuma linha tem apontamento — usa dias de fParadas como antes
+    const uDays = Math.max(1, new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
+    return uDays * hpd * (linhasRef.length||4);
+  }
+  return total;
+}
+function horasParadasProgramadas(){
+  // Soma das durações de paradas planejadas (Fator Externo/Parada Planejada)
+  // dentro do conjunto filtrado atual (fParadas) — já considera split por turno/dia_prod
+  return fParadas.filter(d=>d.categoria==='Fator Externo/Parada Planejada')
+                 .reduce((s,d)=>s+d.duracao,0)/60;
+}
+function horasTotaisDisponiveis(){
+  // Horas Totais Disponíveis = Horas Totais do Período − Horas de Paradas Programadas
+  const pH = periodHours();
+  const pp = horasParadasProgramadas();
+  return Math.max(0, pH - pp);
 }
 function allDates(){
   const anoRef=(fParadas.length&&fParadas[0].data)?fParadas[0].data.slice(0,4)
@@ -1597,7 +1638,7 @@ function allDates(){
   return[...s].filter(Boolean).sort();
 }
 function calcOEE(linha){
-  const pHL=periodHoursPerLinha(); // dias_produtivos × 24h
+  const pHL=periodHoursPerLinha(linha); // dias com apontamento de produção × horas/dia
   const perdasDisp=fParadas.filter(d=>d.linha===linha&&!CATS_EXCL_DISP.includes(d.categoria))
                             .reduce((s,d)=>s+d.duracao/60,0);
   const disp=Math.max(0,Math.min(1,(pHL-perdasDisp)/pHL));
@@ -1625,6 +1666,7 @@ function updateVisao(){
   const oeePorLinha = linhasValidasG.map(l=>calcOEE(l).oee);
   const oeeGeral = oeePorLinha.length ? oeePorLinha.reduce((a,b)=>a+b,0)/oeePorLinha.length : 0;
 
+  document.getElementById('vHorasDisp').textContent=horasTotaisDisponiveis().toFixed(1)+'h';
   document.getElementById('vProd').textContent=fmtKg(totalProd);
   document.getElementById('vMeta').textContent=totalMeta>0?(totalProd/totalMeta*100).toFixed(1)+'%':'—';
   document.getElementById('vHPerd').textContent=fmtHs(totalPerd);
@@ -1754,6 +1796,7 @@ function updatePerdas(){
   const bycat={};fParadas.forEach(d=>{bycat[d.categoria]=(bycat[d.categoria]||0)+d.duracao;});
   const maxMin=fParadas.reduce((m,d)=>d.duracao>m?d.duracao:m,0);
 
+  document.getElementById('horasDisp').textContent=horasTotaisDisponiveis().toFixed(1)+'h';
   document.getElementById('perdTotal').textContent=fmtHs(totalMin);
   document.getElementById('perdSemPlan').textContent=fmtHs(semPlan);
   document.getElementById('perdEventos').textContent=fParadas.length;
@@ -1908,9 +1951,9 @@ function updateManutencao(){
   document.getElementById('mDispb').innerHTML=`<span class="kbadge ${db2}">${dl}</span>`;
 
   const ll=[...new Set(fParadas.map(d=>d.linha))].sort();
-  const pHL=periodHoursPerLinha(); // dias_produtivos_filtrados × 24h
   document.getElementById('maintBody').innerHTML='';
   ll.forEach(l=>{
+    const pHL=periodHoursPerLinha(l); // dias com apontamento de produção desta linha × horas/dia
     const lm=fParadas.filter(d=>d.linha===l&&d.categoria==='Manutenção');
     const lrH=lm.reduce((s,d)=>s+d.duracao/60,0);
     // Contar eventos únicos (antes do split de turno)
