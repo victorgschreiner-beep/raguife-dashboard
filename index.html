@@ -1622,6 +1622,11 @@ function horasParadasProgramadas(){
   return fParadas.filter(d=>d.categoria==='Fator Externo/Parada Planejada')
                  .reduce((s,d)=>s+d.duracao,0)/60;
 }
+function horasParadasProgramadasPorLinha(linha){
+  // Mesma lógica de horasParadasProgramadas(), mas filtrada por linha
+  return fParadas.filter(d=>d.linha===linha&&d.categoria==='Fator Externo/Parada Planejada')
+                 .reduce((s,d)=>s+d.duracao,0)/60;
+}
 function horasTotaisDisponiveis(){
   // Horas Totais Disponíveis = Horas Totais do Período − Horas de Paradas Programadas
   const pH = periodHours();
@@ -1924,11 +1929,15 @@ function updateManutencao(){
   const mnt=fParadas.filter(d=>d.categoria==='Manutenção');
   const n=mnt.length,repH=mnt.reduce((s,d)=>s+d.duracao/60,0);
   const maxR=mnt.reduce((m,d)=>d.duracao>m?d.duracao:m,0);
-  const pH=periodHours(); // total todas as linhas
+  // Base = Horas Totais Disponíveis (Tempo Total - Paradas Planejadas), NÃO o tempo total bruto.
+  // Isso garante consistência com o KPI "Horas Totais Disponíveis" da Visão Geral e evita
+  // que o horário planejado (fim de turno, manutenção programada, falta de espaço etc.)
+  // infle artificialmente a base de cálculo da disponibilidade.
+  const pH=horasTotaisDisponiveis(); // total todas as linhas, já líquido de paradas planejadas
   const nUniq=new Set(mnt.map(d=>d.evento_id||d.linha+'|'+d.inicio_orig+'|'+d.motivo)).size||1;
   const mttr=nUniq>0?repH/nUniq:0;
   const mtbf=nUniq>0?Math.max(0,pH-repH)/nUniq:pH;
-  // Disponibilidade de Manutenção = (Tempo Total - Horas de Manutenção) / Tempo Total
+  // Disponibilidade de Manutenção = (Horas Disponíveis - Horas de Manutenção) / Horas Disponíveis
   const perdasMnt=fParadas.filter(d=>d.categoria==='Manutenção').reduce((s,d)=>s+d.duracao/60,0);
   const disp=pH>0?(Math.max(0,pH-perdasMnt)/pH)*100:100;
 
@@ -1953,7 +1962,8 @@ function updateManutencao(){
   const ll=[...new Set(fParadas.map(d=>d.linha))].sort();
   document.getElementById('maintBody').innerHTML='';
   ll.forEach(l=>{
-    const pHL=periodHoursPerLinha(l); // dias com apontamento de produção desta linha × horas/dia
+    const pHLtotal=periodHoursPerLinha(l); // dias com apontamento de produção desta linha × horas/dia
+    const pHL=Math.max(0,pHLtotal-horasParadasProgramadasPorLinha(l)); // já líquido de parada planejada
     const lm=fParadas.filter(d=>d.linha===l&&d.categoria==='Manutenção');
     const lrH=lm.reduce((s,d)=>s+d.duracao/60,0);
     // Contar eventos únicos (antes do split de turno)
@@ -1961,7 +1971,7 @@ function updateManutencao(){
     const ln=lnUniq; // usar eventos únicos para exibição e cálculo
     const lmttr=ln>0?lrH/ln:0;
     const lmtbf=ln>0?Math.max(0,pHL-lrH)/ln:pHL;
-    // Disponibilidade de Manutenção = (pHL - horas só de manutenção) / pHL
+    // Disponibilidade de Manutenção = (Horas Disponíveis da linha - horas só de manutenção) / Horas Disponíveis
     const ld=pHL>0?(Math.max(0,pHL-lrH)/pHL)*100:100;
     const dc=ld>=97.8?'#024f2b':ld>=95?'#739630':'#c0392b';
     document.getElementById('maintBody').innerHTML+=`<tr>
@@ -2024,10 +2034,13 @@ function updateManutencao(){
   destroyChart('cMTBF');
   const mtbfA=[],mttrA=[];
   ll.forEach(l=>{
+    // Bug corrigido: pHL não existia neste escopo (variável ficava presa ao loop da tabela
+    // acima e causava ReferenceError, interrompendo o resto de updateManutencao() em silêncio).
+    const pHLc=Math.max(0,periodHoursPerLinha(l)-horasParadasProgramadasPorLinha(l));
     const lm=fParadas.filter(d=>d.linha===l&&d.categoria==='Manutenção');
     const ln=lm.length,lrH=lm.reduce((s,d)=>s+d.duracao/60,0);
     mttrA.push(+(ln>0?lrH/ln:0).toFixed(2));
-    mtbfA.push(+(ln>0?(pHL-lrH)/ln:(pHL-lrH)).toFixed(2));
+    mtbfA.push(+(ln>0?Math.max(0,pHLc-lrH)/ln:Math.max(0,pHLc-lrH)).toFixed(2));
   });
   charts['cMTBF']=new Chart(document.getElementById('cMTBF'),{type:'bar',
     data:{labels:ll,datasets:[
@@ -2037,11 +2050,12 @@ function updateManutencao(){
       scales:{x:{ticks:bT,grid:bG},y:{ticks:bT,grid:bG,title:{display:true,text:'Horas',color:tc,font:{size:10}}}}}});
 
   destroyChart('cDispLinha');
-  // Disponibilidade de Manutenção = (pHL - horas só de Manutenção) / pHL
-  // Igual ao cálculo da tabela — usa só categoria Manutenção
+  // Disponibilidade de Manutenção = (Horas Disponíveis da linha - horas só de Manutenção) / Horas Disponíveis
+  // Igual ao cálculo da tabela — usa só categoria Manutenção, já líquido de parada planejada
   const dispA=ll.map(l=>{
+    const pHLd=Math.max(0,periodHoursPerLinha(l)-horasParadasProgramadasPorLinha(l));
     const lrHg=fParadas.filter(d=>d.linha===l&&d.categoria==='Manutenção').reduce((s,d)=>s+d.duracao/60,0);
-    return+(pHL>0?(Math.max(0,pHL-lrHg)/pHL)*100:100).toFixed(1);
+    return+(pHLd>0?(Math.max(0,pHLd-lrHg)/pHLd)*100:100).toFixed(1);
   });
   const dispC=dispA.map(v=>v>=97.8?'#024f2b':v>=95?'#739630':'#c0392b');
   charts['cDispLinha']=new Chart(document.getElementById('cDispLinha'),{type:'bar',
