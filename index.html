@@ -604,6 +604,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="tab" onclick="showTab('manutencao')">🔧 Manutenção</div>
   <div class="tab" onclick="showTab('comparativo')">📅 Comparativo Mensal</div>
   <div class="tab" onclick="showTab('percas')">♻️ Percas</div>
+  <div class="tab" onclick="showTab('consumo')">⚖️ Consumo × Apt.</div>
   <div class="tab" onclick="showTab('oee_diario')">📆 OEE Diário</div>
   <div class="tab" onclick="showTab('detalhe')">🔍 Detalhe Paradas</div>
   <div class="tab" onclick="showTab('tv')">📺 TV / Apresentação</div>
@@ -811,6 +812,55 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="cgrid c2">
     <div class="ccard"><div class="ctit">Evolução Diária de Percas</div><div class="csub">kg por dia empilhado por linha</div><div class="ch tall"><canvas id="cRDia"></canvas></div></div>
     <div class="ccard"><div class="ctit">Percas por Turno e Linha</div><div class="csub">distribuição por turno</div><div class="ch tall"><canvas id="cRTurno"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ══ CONSUMO × APONTAMENTO ══ -->
+<div class="page" id="page-consumo">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="fbtn" onclick="exportPDF('consumo','Consumo_Apontamento')">📥 Exportar PDF</button>
+  </div>
+  <div class="st">⚖️ Consumo × Apontamento – Divergência de Estoque</div>
+  <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-family:'DM Mono',monospace;font-size:.73rem;color:var(--muted);">
+    ℹ️ <strong style="color:var(--gdk)">Apontamento</strong> = produção total registrada pelas linhas de extrusão no dia. 
+    <strong style="color:var(--red,#c0392b)">Consumo</strong> = saída real de estoque (pesagem/balança). 
+    <strong>Diferença</strong> = Apontamento − Consumo · positivo → mais apontado que consumido · negativo → mais consumido que apontado.
+    O estoque é registrado apenas no início e fim de cada mês.
+  </div>
+
+  <!-- KPIs -->
+  <div class="kgrid">
+    <div class="kcard gdk"><div class="klbl">Total Apontado</div><div class="kval sm" id="cvApt">—</div><div class="kunit">kg registrados pelas linhas</div><div class="kico">🏭</div></div>
+    <div class="kcard red"><div class="klbl">Total Consumido</div><div class="kval sm" id="cvCons">—</div><div class="kunit">kg saída real de estoque</div><div class="kico">📦</div></div>
+    <div class="kcard amb" id="cvDifCard"><div class="klbl">Diferença Acumulada</div><div class="kval sm" id="cvDif">—</div><div class="kunit">Apt − Consumo (kg)</div><div class="kico">⚖️</div></div>
+    <div class="kcard gray"><div class="klbl">Divergência</div><div class="kval sm" id="cvPct">—</div><div class="kunit">% sobre consumo</div><div class="kico">📉</div></div>
+    <div class="kcard glt"><div class="klbl">Estoque Inicial</div><div class="kval sm" id="cvEstIni">—</div><div class="kunit">kg início do período</div><div class="kico">🔼</div></div>
+    <div class="kcard glt"><div class="klbl">Estoque Final</div><div class="kval sm" id="cvEstFim">—</div><div class="kunit">kg fim do período</div><div class="kico">🔽</div></div>
+    <div class="kcard gray"><div class="klbl">Dias com Dados</div><div class="kval sm" id="cvDias">—</div><div class="kunit">registros no período</div><div class="kico">📅</div></div>
+    <div class="kcard gray"><div class="klbl">Maior Divergência</div><div class="kval sm" id="cvMaior">—</div><div class="kunit">dia com maior gap (kg)</div><div class="kico">⚠️</div></div>
+  </div>
+
+  <!-- Gráfico principal: Apontamento vs Consumo por dia -->
+  <div class="cgrid c1">
+    <div class="ccard">
+      <div class="ctit">Apontamento × Consumo por Dia</div>
+      <div class="csub">barras agrupadas — comparativo diário (kg)</div>
+      <div class="ch tall"><canvas id="cCvDia"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Gráficos secundários: diferença diária + totais mensais -->
+  <div class="cgrid c2">
+    <div class="ccard">
+      <div class="ctit">Diferença Diária</div>
+      <div class="csub">Apontamento − Consumo por dia (positivo = superávit, negativo = déficit)</div>
+      <div class="ch tall"><canvas id="cCvDif"></canvas></div>
+    </div>
+    <div class="ccard">
+      <div class="ctit">Total Mensal – Apontamento × Consumo</div>
+      <div class="csub">comparativo por mês (kg)</div>
+      <div class="ch tall"><canvas id="cCvMes"></canvas></div>
+    </div>
   </div>
 </div>
 
@@ -1180,7 +1230,9 @@ function showToast(msg,type,ico,dur){
 function setUStatus(msg,type){const el=document.getElementById('uStatus');if(el){el.textContent=msg;el.className='ustatus '+(type||'');}}
 function setUBar(pct){const el=document.getElementById('uBar');if(el)el.style.width=pct+'%';}
 
-let fParadas=[...RAW_PARADAS],fProd=[...RAW_PRODUCAO],fRepr=[...RAW_REPROCESSO];
+const RAW_CONSUMO = [];
+let ESTOQUE_MENSAL = {}; // { "maio": 140000, "junho": 140000 }
+let fParadas=[...RAW_PARADAS],fProd=[...RAW_PRODUCAO],fRepr=[...RAW_REPROCESSO],fConsumo=[...RAW_CONSUMO];
 
 // ═══════════════════════ FIREBASE ═══════════════════════
 var _fbInit=false;
@@ -1249,7 +1301,7 @@ async function loadCloud(){
     RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
     RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
     RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
-    fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];
+    fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
     reInitFilters();
     if(d.meta&&d.meta.updatedAt){
       const dt=new Date(d.meta.updatedAt);
@@ -1459,11 +1511,78 @@ async function parseWorkbook(wb,fname){
   }
   setUBar(80);
 
+  // ── Aba: Percas - Consumo x Apontamento ──
+  const wsCons=findSheet(wb,['Percas - Consumo x Apontamento','Consumo x Apontamento','consumo x apontamento','Consumo','consumo']);
+  const newCons=[];
+  if(wsCons){
+    const rows=XLSX.utils.sheet_to_json(wsCons,{header:1,raw:true,cellDates:true});
+    const anoRef=newPar.length?parseInt(newPar[0].data.slice(0,4)):new Date().getFullYear();
+
+    // 1ª passagem: extrair estoque dos totalizadores mensais (linha "Maio", "Junho" etc)
+    //   Estrutura: r[0]='Maio' r[3]=140000 (estoque do mês)
+    //   O estoque na linha do totalizador corresponde ao estoque do FIM daquele mês
+    //   (que é também o estoque INICIAL do próximo mês)
+    const estoquePorMes = {}; // { '2026-05': 140000, '2026-06': 140000, ... }
+    const MESES_PT_MAP = {
+      'jan':1,'fev':2,'mar':3,'abr':4,'mai':5,'jun':6,
+      'jul':7,'ago':8,'set':9,'out':10,'nov':11,'dez':12,
+      'janeiro':1,'fevereiro':2,'março':3,'abril':4,'maio':5,'junho':6,
+      'julho':7,'agosto':8,'setembro':9,'outubro':10,'novembro':11,'dezembro':12
+    };
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i];
+      if(!r[0])continue;
+      const raw0=String(r[0]).trim().toLowerCase();
+      // Identificar linha de totalizador mensal (texto = nome do mês)
+      const mesNum = Object.keys(MESES_PT_MAP).find(k=>raw0.startsWith(k));
+      const isMes = !!mesNum && typeof rows[i][0]==='string';
+      if(isMes && r[3]!==undefined && r[3]!==null && r[3]!==''){
+        const mn = MESES_PT_MAP[mesNum];
+        const chave = `${anoRef}-${String(mn).padStart(2,'0')}`;
+        estoquePorMes[chave] = parseFloat(r[3])||0;
+      }
+    }
+
+    // 2ª passagem: carregar linhas de dados diários
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i];
+      if(!r[0])continue;
+      const raw0=r[0];
+      // Pular linhas de totalizador (string não-numérica)
+      if(typeof raw0==='string' && isNaN(Number(raw0)) && !(raw0 instanceof Date))continue;
+      let d=parseDT(raw0);if(!d)continue;
+      d=new Date(anoRef,d.getMonth(),d.getDate());
+      const apt  = parseFloat(r[1])||0;
+      const cons = parseFloat(r[2])||0;
+      const dif  = apt - cons; // sempre calcula, ignora fórmula Excel (vem como string)
+      // Estoque da coluna D (se preenchido nessa linha — caso exista)
+      const estLinha = (r[3]!==undefined&&r[3]!==null&&r[3]!==''&&typeof r[3]==='number')
+                       ? parseFloat(r[3]) : null;
+      newCons.push({
+        data:        fmtDate(d),
+        dia_prod:    getDiaProd(d),
+        mes:         fmtMes(d),
+        mes_label:   fmtMesLbl(d),
+        dia:         fmtDia(d),
+        apontamento: apt,
+        consumo:     cons,
+        estoque:     estLinha,   // só preenchido se vier na linha do dia
+        diferenca:   dif
+      });
+    }
+
+    // Associar estoque mensal a cada registro: estoque do mês = valor da linha totalizadora
+    // Guarda no array separado para uso nos KPIs de estoque inicial/final por mês
+    newCons._estoqueMensal = estoquePorMes;
+  }
+
   // Atualizar dados globais
   RAW_PARADAS.length=0;newPar.forEach(r=>RAW_PARADAS.push(r));
   RAW_PRODUCAO.length=0;newProd.forEach(r=>RAW_PRODUCAO.push(r));
   RAW_REPROCESSO.length=0;newPerc.forEach(r=>RAW_REPROCESSO.push(r));
-  fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];
+  RAW_CONSUMO.length=0;newCons.forEach(r=>RAW_CONSUMO.push(r));
+  if(newCons._estoqueMensal) Object.assign(ESTOQUE_MENSAL={}, newCons._estoqueMensal);
+  fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
   reInitFilters();
 
   const nDup=rawPar.length-uniqPar.length;
@@ -1545,6 +1664,14 @@ function applyFilters(){
     if(dFim&&dp&&dp>dFim)return false;
     return true;
   });
+  // Consumo x Apontamento: não tem linha/turno, só filtro De/Até e mês
+  fConsumo=RAW_CONSUMO.filter(d=>{
+    if(mes!=='all'&&d.mes!==mes)return false;
+    const dp=d.dia_prod||d.data||'';
+    if(dIni&&dp&&dp<dIni)return false;
+    if(dFim&&dp&&dp>dFim)return false;
+    return true;
+  });
   document.getElementById('cShown').textContent=fParadas.length;
   updateAll();
 }
@@ -1558,7 +1685,7 @@ function resetFilters(){
   // Usar dia_prod para o range de datas — dia começa às 21h do anterior
   const datas=RAW_PARADAS.map(d=>d.dia_prod||d.data).filter(Boolean).sort();
   if(datas.length){document.getElementById('fDe').value=datas[0];document.getElementById('fAte').value=datas[datas.length-1];}
-  fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];
+  fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
   document.getElementById('cShown').textContent=fParadas.length;
   updateAll();
 }
@@ -3133,6 +3260,155 @@ document.addEventListener('keydown',e=>{
 });
 
 // ═══════════════════════ UPDATE ALL ═══════════════════════
+// ═══════════════════════ CONSUMO × APONTAMENTO ═══════════════════════
+function updateConsumo(){
+  const src = fConsumo.length ? fConsumo : [];
+
+  // ── KPIs ──
+  const totalApt  = src.reduce((s,d)=>s+d.apontamento,0);
+  const totalCons = src.reduce((s,d)=>s+d.consumo,0);
+  const totalDif  = src.reduce((s,d)=>s+d.diferenca,0);
+  const pctDiv    = totalCons>0?(totalDif/totalCons*100):0;
+
+  // ── Estoque Inicial / Final ──
+  // Estoque Inicial = fechamento do mês ANTERIOR ao primeiro mês do filtro
+  // Estoque Final   = fechamento do último mês do filtro
+  // (ESTOQUE_MENSAL guarda o estoque de FECHAMENTO de cada mês como YYYY-MM)
+  const mesesFiltro = [...new Set(src.map(d=>d.mes))].sort(); // ['2026-07',...]
+  let estIni = null, estFim = null;
+  if(mesesFiltro.length){
+    const primMes = mesesFiltro[0]; // '2026-07'
+    const ultMes  = mesesFiltro[mesesFiltro.length-1];
+    // Mês anterior ao primeiro mês do filtro = estoque inicial
+    const [ano, mes] = primMes.split('-').map(Number);
+    const mesPrevNum = mes === 1 ? 12 : mes - 1;
+    const anoaPrev   = mes === 1 ? ano - 1 : ano;
+    const chavePrev  = `${anoaPrev}-${String(mesPrevNum).padStart(2,'0')}`;
+    estIni = ESTOQUE_MENSAL[chavePrev] ?? null;
+    estFim = ESTOQUE_MENSAL[ultMes] ?? null;
+    // Fallback: se não achou mês anterior, tenta o próprio primeiro mês
+    if(estIni === null) estIni = ESTOQUE_MENSAL[primMes] ?? null;
+  }
+
+  // ── Diferença Ajustada pelo Estoque ──
+  // Fórmula: Dif_Ajustada = (Apt - Cons) + (Est_Ini - Est_Fim)
+  // Quando estoque cai (Est_Ini > Est_Fim), o drawdown compensa parte do gap negativo
+  const variacaoEstoque = (estIni !== null && estFim !== null) ? (estIni - estFim) : 0;
+  const difAjustada = totalDif + variacaoEstoque;
+  const usouEstoque = estIni !== null && estFim !== null;
+
+  // Maior divergência absoluta num dia
+  const maiorDif = src.reduce((m,d)=>Math.abs(d.diferenca)>Math.abs(m)?d.diferenca:m,0);
+
+  const fmtN = n=>n.toLocaleString('pt-BR',{maximumFractionDigits:1});
+  document.getElementById('cvApt').textContent    = fmtN(totalApt)+' kg';
+  document.getElementById('cvCons').textContent   = fmtN(totalCons)+' kg';
+  // Diferença: se tiver estoque disponível mostra ajustada, senão mostra bruta
+  const difExibida = usouEstoque ? difAjustada : totalDif;
+  const difLabel   = usouEstoque
+    ? `${(totalDif>=0?'+':'')+fmtN(totalDif)} bruto · ajust. est.: ${(variacaoEstoque>=0?'+':'')+fmtN(variacaoEstoque)}`
+    : 'sem estoque para ajuste';
+  document.getElementById('cvDif').textContent    = (difExibida>=0?'+':'')+fmtN(difExibida)+' kg';
+  document.querySelector('#cvDifCard .kunit').textContent = difLabel;
+  document.getElementById('cvPct').textContent    = totalCons>0?((difExibida/totalCons*100)>=0?'+':'')+(difExibida/totalCons*100).toFixed(1)+'%':'—';
+  document.getElementById('cvEstIni').textContent = estIni!==null?fmtN(estIni)+' kg':'—';
+  document.getElementById('cvEstFim').textContent = estFim!==null?fmtN(estFim)+' kg':'—';
+  document.getElementById('cvDias').textContent   = src.length;
+  document.getElementById('cvMaior').textContent  = (maiorDif>=0?'+':'')+fmtN(maiorDif)+' kg';
+
+  // Cor do card Diferença: verde se positivo, vermelho se negativo
+  const difCard = document.getElementById('cvDifCard');
+  if(difCard){difCard.className='kcard '+(totalDif>=0?'teal':'red');}
+
+  // ── Gráficos ──
+  const bT={color:'#888',font:{family:'DM Mono',size:9}};
+  const bG={color:'rgba(0,0,0,.04)'};
+
+  // 1. Apontamento × Consumo por dia (barras agrupadas)
+  destroyChart('cCvDia');
+  const dias=[...new Set(src.map(d=>d.dia))].sort((a,b)=>a.localeCompare(b));
+  const byDia={};src.forEach(d=>{byDia[d.dia]=d;});
+  if(dias.length){
+    charts['cCvDia']=new Chart(document.getElementById('cCvDia'),{
+      type:'bar',
+      data:{
+        labels:dias,
+        datasets:[
+          {label:'Apontamento (kg)',data:dias.map(d=>byDia[d]?byDia[d].apontamento:0),
+           backgroundColor:'#024f2bcc',borderColor:'#024f2b',borderWidth:1.5,borderRadius:4},
+          {label:'Consumo (kg)',    data:dias.map(d=>byDia[d]?byDia[d].consumo:0),
+           backgroundColor:'#c0392bcc',borderColor:'#c0392b',borderWidth:1.5,borderRadius:4}
+        ]
+      },
+      options:{
+        plugins:{legend:{labels:{color:'#444',font:{family:'DM Mono',size:10},boxWidth:12}}},
+        scales:{
+          x:{ticks:{...bT,maxRotation:45},grid:bG},
+          y:{ticks:bT,grid:bG,title:{display:true,text:'kg',color:'#888',font:{size:10}}}
+        }
+      }
+    });
+  }
+
+  // 2. Diferença diária (barras coloridas: verde/vermelho)
+  destroyChart('cCvDif');
+  if(dias.length){
+    const difColors=dias.map(d=>(byDia[d]?.diferenca||0)>=0?'#024f2bcc':'#c0392bcc');
+    charts['cCvDif']=new Chart(document.getElementById('cCvDif'),{
+      type:'bar',
+      data:{
+        labels:dias,
+        datasets:[{
+          label:'Diferença (kg)',
+          data:dias.map(d=>byDia[d]?+(byDia[d].diferenca.toFixed(1)):0),
+          backgroundColor:difColors,
+          borderColor:difColors.map(c=>c.slice(0,7)),
+          borderWidth:1.5,borderRadius:4
+        }]
+      },
+      options:{
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{...bT,maxRotation:45},grid:bG},
+          y:{ticks:bT,grid:bG,
+            title:{display:true,text:'kg',color:'#888',font:{size:10}},
+            // Linha de zero visível
+          }
+        }
+      }
+    });
+  }
+
+  // 3. Total mensal: Apontamento × Consumo
+  destroyChart('cCvMes');
+  const meses=[...new Set(src.map(d=>d.mes))].sort();
+  if(meses.length){
+    const byMes={};
+    meses.forEach(m=>{byMes[m]={apt:0,cons:0};});
+    src.forEach(d=>{if(byMes[d.mes]){byMes[d.mes].apt+=d.apontamento;byMes[d.mes].cons+=d.consumo;}});
+    const meslbls=meses.map(m=>{const r=src.find(d=>d.mes===m);return r?r.mes_label:m;});
+    charts['cCvMes']=new Chart(document.getElementById('cCvMes'),{
+      type:'bar',
+      data:{
+        labels:meslbls,
+        datasets:[
+          {label:'Apontamento',data:meses.map(m=>+byMes[m].apt.toFixed(1)),
+           backgroundColor:'#024f2bcc',borderColor:'#024f2b',borderWidth:1.5,borderRadius:5},
+          {label:'Consumo',    data:meses.map(m=>+byMes[m].cons.toFixed(1)),
+           backgroundColor:'#c0392bcc',borderColor:'#c0392b',borderWidth:1.5,borderRadius:5}
+        ]
+      },
+      options:{
+        plugins:{legend:{labels:{color:'#444',font:{family:'DM Mono',size:10},boxWidth:12}}},
+        scales:{
+          x:{ticks:bT,grid:bG},
+          y:{ticks:bT,grid:bG,title:{display:true,text:'kg',color:'#888',font:{size:10}}}
+        }
+      }
+    });
+  }
+}
+
 function updateAll(){
   const active = document.querySelector('.page.active');
   if(!active) return;
@@ -3143,6 +3419,7 @@ function updateAll(){
   if(id==='manutencao')  updateManutencao();
   if(id==='comparativo') updateComparativo();
   if(id==='percas')      updatePercas();
+  if(id==='consumo')     updateConsumo();
   if(id==='oee_diario')  updateOEEDiario();
   if(id==='detalhe'){
     initDetFiltros();
@@ -3159,7 +3436,7 @@ function updateAll(){
 }
 Chart.defaults.font.family='DM Mono';
 Chart.defaults.color='#666';
-fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];
+fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
 initFilters();
 document.getElementById('cShown').textContent=RAW_PARADAS.length;
 document.getElementById('lastBadge').textContent='Dados embutidos · '+RAW_PARADAS.length+' paradas';
