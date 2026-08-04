@@ -566,6 +566,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
   <div class="hdr-r">
     <div class="fb-status"><div class="fb-dot" id="fbDot"></div><span id="fbTxt">Pronto</span></div>
     <div class="last-badge" id="lastBadge">Dados embutidos</div>
+    <div class="last-badge" id="regimeBadge" style="background:rgba(115,150,48,.15);color:#739630;border-color:#739630">—</div>
     <button class="hbtn green" onclick="loadCloud()">☁️ Carregar Nuvem</button>
     <button class="hbtn" onclick="showUpload()">📂 Upload Excel</button>
     <button class="hbtn red" onclick="clearCloud()">🗑️ Limpar Nuvem</button>
@@ -1694,9 +1695,22 @@ function initFilters(){
   document.getElementById('cTotal').textContent=RAW_PARADAS.length;
   document.getElementById('cShown').textContent=RAW_PARADAS.length;
   // Mostrar regime atual dos dados
-  const _reg = getRegimePeriodo();
+  // Badge de regime — detecta automaticamente pelo período
   const _regEl = document.getElementById('regimeBadge');
-  if(_regEl) _regEl.textContent = _reg==='3t' ? '3 Turnos (24h)' : '2 Turnos (18h)';
+  if(_regEl){
+    const _reg = getRegimePeriodo();
+    // Verificar se há mistura de regimes
+    const srcProd = fProd.length ? fProd : RAW_PRODUCAO;
+    const temT3 = srcProd.some(d=>String(d.turno)==='3');
+    const temSemT3 = srcProd.some(d=>String(d.turno)!=='3');
+    if(temT3 && temSemT3){
+      _regEl.textContent = 'Misto (3T + 2T)';
+      _regEl.style.color = '#d97706';
+    } else {
+      _regEl.textContent = _reg==='3t' ? '3 Turnos (24h/dia)' : '2 Turnos (18h/dia)';
+      _regEl.style.color = '#a8d060';
+    }
+  }
   // Filtro dia produtivo
   const diasProd=[...new Set(RAW_PARADAS.map(d=>d.dia_prod))].sort();
   const dpSel=document.getElementById('fDiaProd');
@@ -1817,27 +1831,47 @@ function diasComApontamento(linha){
   if(turno!=='all') src = src.filter(d=>String(d.turno)===String(turno));
   return new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean));
 }
-function periodHoursPerLinha(linha){
-  // Usa dias com apontamento de produção (não apenas dias com registro de parada)
-  const hpd = horasPorDiaProdutivo();
-  const dias = diasComApontamento(linha);
-  if(!dias.size) return hpd; // sem apontamento → assume 1 dia (fallback)
-  return dias.size * hpd;
+function horasDisponivelDia(diaProd){
+  // Horas disponíveis por linha por dia, considerando o regime do dia
+  // 3t = 24h (3 turnos × 8h) | 2t = 18h (2 turnos × 9h)
+  const sel    = document.getElementById('fTurno');
+  const turnoF = sel ? sel.value : 'all';
+  const regime = getRegimeDia(diaProd);
+  if(turnoF !== 'all'){
+    return regime === '2t' ? 9 : 8; // 1 turno
+  }
+  return horasRegime(regime); // 18h ou 24h
 }
+
+function periodHoursPerLinha(linha){
+  // Soma horas disponíveis de cada dia com apontamento, respeitando regime do dia
+  const dias = diasComApontamento(linha);
+  if(!dias.size){
+    // fallback: usa hpd do período geral
+    return horasPorDiaProdutivo();
+  }
+  let total = 0;
+  dias.forEach(dia => { total += horasDisponivelDia(dia); });
+  return total;
+}
+
 function periodHours(){
-  // Total horas = Σ (dias com apontamento de cada linha) × horas_do_dia(8h ou 24h)
-  // Soma por linha em vez de (dias únicos × nLinhas) porque cada linha pode
-  // ter dias diferentes com/sem apontamento de produção.
-  const hpd = horasPorDiaProdutivo();
-  const src = fParadas.length ? fParadas : RAW_PARADAS;
-  const linhas = [...new Set(src.map(d=>d.linha).filter(Boolean))];
-  const linhasRef = linhas.length ? linhas : ['Linha 1','Linha 2','Linha 4','Linha 5'];
-  let total=0;
-  linhasRef.forEach(l=>{ total += diasComApontamento(l).size * hpd; });
-  if(total===0){
-    // fallback: nenhuma linha tem apontamento — usa dias de fParadas como antes
+  // Total horas = Σ por linha × Σ por dia (regime correto de cada dia)
+  const src     = fParadas.length ? fParadas : RAW_PARADAS;
+  const linhas  = [...new Set(src.map(d=>d.linha).filter(Boolean))];
+  const linhasR = linhas.length ? linhas : ['Linha 1','Linha 2','Linha 4','Linha 5'];
+  let total = 0;
+  linhasR.forEach(l=>{
+    const dias = diasComApontamento(l);
+    if(dias.size){
+      dias.forEach(dia => { total += horasDisponivelDia(dia); });
+    } else {
+      total += horasPorDiaProdutivo(); // fallback
+    }
+  });
+  if(total === 0){
     const uDays = Math.max(1, new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-    return uDays * hpd * (linhasRef.length||4);
+    return uDays * horasPorDiaProdutivo() * (linhasR.length||4);
   }
   return total;
 }
