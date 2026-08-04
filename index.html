@@ -586,13 +586,13 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
       <option value="2">T2 · 05h–13h</option>
       <option value="3">T3 · 13h–21h</option>
     </select></div>
-  <div class="fg"><span class="fl">De</span><input type="date" class="fi" id="fDe" onchange="updateTurnoSelect();applyFilters()"></div>
-  <div class="fg"><span class="fl">Até</span><input type="date" class="fi" id="fAte" onchange="updateTurnoSelect();applyFilters()"></div>
+  <div class="fg"><span class="fl">De</span><input type="date" class="fi" id="fDe" onchange="applyFilters()"></div>
+  <div class="fg"><span class="fl">Até</span><input type="date" class="fi" id="fAte" onchange="applyFilters()"></div>
   <div class="fg"><span class="fl">Mês</span>
-    <select class="fs" id="fMes" onchange="updateTurnoSelect();applyFilters()"><option value="all">Todos os meses</option></select></div>
+    <select class="fs" id="fMes" onchange="applyFilters()"><option value="all">Todos os meses</option></select></div>
   <div class="fg"><span class="fl">Dia Produtivo</span>
     <select class="fs" id="fDiaProd"><option value="all">Todos os dias</option></select></div>
-  <button class="fbtn" onclick="updateTurnoSelect();applyFilters()">Filtrar</button>
+  <button class="fbtn" onclick="applyFilters()">Filtrar</button>
   <button class="fbtn rst" onclick="resetFilters()">Limpar</button>
   <div class="fcount">Paradas: <span id="cShown">—</span> / <span id="cTotal">—</span></div>
 </div>
@@ -1722,6 +1722,62 @@ function initFilters(){
 
 function reInitFilters(){initFilters();}
 
+
+// ═══ Atualizar select de Turno conforme regime do período ═══
+function updateTurnoSelect(){
+  const sel = document.getElementById('fTurno');
+  if(!sel) return;
+  const dIni = document.getElementById('fDe')?.value  || '';
+  const dFim = document.getElementById('fAte')?.value || '';
+  const mes  = document.getElementById('fMes')?.value || 'all';
+  const src  = RAW_PRODUCAO;
+  const filtrado = src.filter(d=>{
+    const dp = d.dia_prod || d.data || '';
+    if(dIni && dp < dIni) return false;
+    if(dFim && dp > dFim) return false;
+    if(mes !== 'all' && d.mes !== mes) return false;
+    return true;
+  });
+  const temT3  = filtrado.some(d=>String(d.turno)==='3');
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="all">Todos</option>';
+  if(temT3){
+    sel.innerHTML += '<option value="1">T1 · 21h–05h</option>';
+    sel.innerHTML += '<option value="2">T2 · 05h–13h</option>';
+    sel.innerHTML += '<option value="3">T3 · 13h–21h</option>';
+    sel.title = 'Regime 3 Turnos (24h/dia)';
+    sel.style.borderColor = '';
+  } else {
+    sel.innerHTML += '<option value="1">T1 · 21h–06h</option>';
+    sel.innerHTML += '<option value="2">T2 · 06h–15h</option>';
+    sel.title = 'Regime 2 Turnos (18h/dia)';
+    sel.style.borderColor = '#739630';
+  }
+  // Restaurar valor anterior se ainda válido, senão resetar
+  const opts = [...sel.options].map(o=>o.value);
+  sel.value = opts.includes(curVal) ? curVal : 'all';
+  // Atualizar badge de regime
+  const badge = document.getElementById('regimeBadge');
+  if(badge){
+    const allSrc  = RAW_PRODUCAO;
+    const temT3All= allSrc.some(d=>String(d.turno)==='3');
+    const misto   = temT3All && allSrc.some(d=>String(d.turno)!=='3') && !dIni && !dFim && mes==='all';
+    if(misto){
+      badge.textContent='Misto (3T+2T)';
+      badge.style.color='#d97706';badge.style.borderColor='#d97706';
+      badge.style.background='rgba(217,119,6,.1)';
+    } else if(temT3){
+      badge.textContent='3 Turnos · 24h/dia';
+      badge.style.color='#739630';badge.style.borderColor='#739630';
+      badge.style.background='rgba(115,150,48,.1)';
+    } else {
+      badge.textContent='2 Turnos · 18h/dia';
+      badge.style.color='#0d7d5f';badge.style.borderColor='#0d7d5f';
+      badge.style.background='rgba(13,125,95,.1)';
+    }
+  }
+}
+
 function applyFilters(){
   const linha=document.getElementById('fLinha').value;
   const cat=document.getElementById('fCat').value;
@@ -1770,6 +1826,7 @@ function applyFilters(){
     return true;
   });
   document.getElementById('cShown').textContent=fParadas.length;
+  updateTurnoSelect();
   updateAll();
 }
 
@@ -1779,12 +1836,12 @@ function resetFilters(){
   document.getElementById('fTurno').value='all';
   document.getElementById('fMes').value='all';
   if(document.getElementById('fDiaProd'))document.getElementById('fDiaProd').value='all';
-  updateTurnoSelect(); // Restaurar turnos conforme regime do período completo
   // Usar dia_prod para o range de datas — dia começa às 21h do anterior
   const datas=RAW_PARADAS.map(d=>d.dia_prod||d.data).filter(Boolean).sort();
   if(datas.length){document.getElementById('fDe').value=datas[0];document.getElementById('fAte').value=datas[datas.length-1];}
   fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
   document.getElementById('cShown').textContent=fParadas.length;
+  updateTurnoSelect();
   updateAll();
 }
 
