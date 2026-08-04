@@ -586,13 +586,13 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
       <option value="2">T2 · 05h–13h</option>
       <option value="3">T3 · 13h–21h</option>
     </select></div>
-  <div class="fg"><span class="fl">De</span><input type="date" class="fi" id="fDe"></div>
-  <div class="fg"><span class="fl">Até</span><input type="date" class="fi" id="fAte"></div>
+  <div class="fg"><span class="fl">De</span><input type="date" class="fi" id="fDe" onchange="updateTurnoSelect();applyFilters()"></div>
+  <div class="fg"><span class="fl">Até</span><input type="date" class="fi" id="fAte" onchange="updateTurnoSelect();applyFilters()"></div>
   <div class="fg"><span class="fl">Mês</span>
-    <select class="fs" id="fMes"><option value="all">Todos os meses</option></select></div>
+    <select class="fs" id="fMes" onchange="updateTurnoSelect();applyFilters()"><option value="all">Todos os meses</option></select></div>
   <div class="fg"><span class="fl">Dia Produtivo</span>
     <select class="fs" id="fDiaProd"><option value="all">Todos os dias</option></select></div>
-  <button class="fbtn" onclick="applyFilters()">Filtrar</button>
+  <button class="fbtn" onclick="updateTurnoSelect();applyFilters()">Filtrar</button>
   <button class="fbtn rst" onclick="resetFilters()">Limpar</button>
   <div class="fcount">Paradas: <span id="cShown">—</span> / <span id="cTotal">—</span></div>
 </div>
@@ -1779,6 +1779,7 @@ function resetFilters(){
   document.getElementById('fTurno').value='all';
   document.getElementById('fMes').value='all';
   if(document.getElementById('fDiaProd'))document.getElementById('fDiaProd').value='all';
+  updateTurnoSelect(); // Restaurar turnos conforme regime do período completo
   // Usar dia_prod para o range de datas — dia começa às 21h do anterior
   const datas=RAW_PARADAS.map(d=>d.dia_prod||d.data).filter(Boolean).sort();
   if(datas.length){document.getElementById('fDe').value=datas[0];document.getElementById('fAte').value=datas[datas.length-1];}
