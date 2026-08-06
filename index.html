@@ -1949,52 +1949,52 @@ function horasDisponivelDia(diaProd){
   return horasRegime(regime); // 18h ou 24h
 }
 
-function periodHoursPerLinha(linha){
-  // Dias com produção desta linha
+function diasValidosLinha(linha){
+  // Dias válidos para o período de uma linha:
+  // 1. Dias com produção > 0 (linha operou)
+  // 2. Dias com parada planejada (linha parou por planejamento)
+  // Excluindo "Parada Final de Turno" que é só o intervalo sem turno no regime 2T
   const srcProd = fProd.length ? fProd : RAW_PRODUCAO;
-  const srcL    = linha ? srcProd.filter(d=>d.linha===linha) : srcProd;
-  const dias    = new Set(srcL.map(d=>d.dia_prod||d.data).filter(Boolean));
-  if(!dias.size){
-    // Fallback: usar dias de paradas desta linha
-    const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
-    const parL   = linha ? srcPar.filter(d=>d.linha===linha) : srcPar;
-    const diasPar= new Set(parL.map(d=>d.dia_prod||d.data).filter(Boolean));
-    if(!diasPar.size) return horasPorDiaProdutivo();
-    let total=0; diasPar.forEach(d=>{ total+=horasDisponivelDia(d); }); return total;
-  }
-  let total=0; dias.forEach(dia=>{ total+=horasDisponivelDia(dia); }); return total;
+  const srcPar  = fParadas.length ? fParadas : RAW_PARADAS;
+
+  // Dias com produção > 0
+  const diasProd = new Set(
+    srcProd.filter(d=>d.linha===linha && (d.quantidade||0)>0)
+           .map(d=>d.dia_prod||d.data).filter(Boolean)
+  );
+
+  // Dias com parada planejada (exceto Parada Final de Turno)
+  const diasPlan = new Set(
+    srcPar.filter(d=>
+      d.linha===linha &&
+      d.categoria==='Fator Externo/Parada Planejada' &&
+      !isParadaFinalTurno(d)
+    ).map(d=>d.dia_prod||d.data).filter(Boolean)
+  );
+
+  // União: produção OU planejada
+  return new Set([...diasProd, ...diasPlan]);
+}
+
+function periodHoursPerLinha(linha){
+  // Período = dias com produção > 0 OU com parada planejada
+  const dias = diasValidosLinha(linha);
+  if(!dias.size) return 0;
+  let total=0;
+  dias.forEach(dia=>{ total+=horasDisponivelDia(dia); });
+  return total;
 }
 
 function periodHours(){
-  // Abordagem direta: dias únicos com produção × horas/dia × nLinhas
-  // Usa fProd se disponível, senão RAW_PRODUCAO
+  // Total = soma por linha dos dias com produção > 0
+  // Dia sem produção = fábrica não rodou = não entra no período
   const srcProd = fProd.length ? fProd : RAW_PRODUCAO;
   const srcPar  = fParadas.length ? fParadas : RAW_PARADAS;
-  const LINHAS_REF = ['Linha 1','Linha 2','Linha 4','Linha 5'];
-
-  // Linhas presentes
-  const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
-  const nL     = linhas.length || LINHAS_REF.length;
-
-  if(srcProd.length > 0){
-    // Dias com produção — agrupar por linha para contar corretamente
-    let total = 0;
-    linhas.forEach(l=>{
-      const diasL = new Set(srcProd.filter(d=>d.linha===l).map(d=>d.dia_prod||d.data).filter(Boolean));
-      diasL.forEach(dia=>{ total += horasDisponivelDia(dia); });
-    });
-    if(total > 0) return total;
-  }
-
-  // Fallback: usar dias de paradas se não há produção
-  const diasPar = new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean));
-  if(diasPar.size > 0){
-    let total = 0;
-    diasPar.forEach(dia=>{ total += horasDisponivelDia(dia) * nL; });
-    return total;
-  }
-
-  return horasPorDiaProdutivo() * nL;
+  const linhas  = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
+  if(!linhas.length) return 0;
+  let total = 0;
+  linhas.forEach(l=>{ total += periodHoursPerLinha(l); });
+  return total || 0;
 }
 function isParadaFinalTurno(d){
   // "Parada Final de Turno" = período sem turno no regime 2T (15h–21h)
@@ -2009,14 +2009,20 @@ function diasComProducao(linha){
   return new Set(srcL.map(d=>d.dia_prod||d.data).filter(Boolean));
 }
 function horasParadasProgramadas(){
-  // Paradas planejadas APENAS nos dias com apontamento de produção
-  // e EXCETO "Parada Final de Turno" (já implícita no regime 2T)
-  const diasValidos = diasComProducao(null); // todos os dias com produção (qualquer linha)
-  return fParadas.filter(d=>
-    d.categoria==='Fator Externo/Parada Planejada' &&
-    !isParadaFinalTurno(d) &&
-    diasValidos.has(d.dia_prod||d.data)
-  ).reduce((s,d)=>s+d.duracao,0)/60;
+  // Paradas planejadas nos dias válidos (prod>0 OU planejada) por linha
+  const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
+  const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
+  let total = 0;
+  linhas.forEach(l=>{
+    const diasL = diasValidosLinha(l);
+    total += fParadas.filter(d=>
+      d.linha===l &&
+      d.categoria==='Fator Externo/Parada Planejada' &&
+      !isParadaFinalTurno(d) &&
+      diasL.has(d.dia_prod||d.data)
+    ).reduce((s,d)=>s+d.duracao/60, 0);
+  });
+  return total;
 }
 function horasParadasProgramadasPorLinha(linha){
   // Mesmo filtro mas por linha específica
@@ -2029,9 +2035,23 @@ function horasParadasProgramadasPorLinha(linha){
   ).reduce((s,d)=>s+d.duracao,0)/60;
 }
 function horasTotaisDisponiveis(){
-  const pH = periodHours();
-  const pp = horasParadasProgramadas();
-  return Math.max(0, pH - pp);
+  // Por linha: período (prod>0 OU planejada) - horas planejadas nos dias válidos
+  const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
+  const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
+  let total = 0;
+  linhas.forEach(l=>{
+    const pHL_l = periodHoursPerLinha(l);
+    if(pHL_l===0) return;
+    const diasL = diasValidosLinha(l);
+    const ppL = fParadas.filter(d=>
+      d.linha===l &&
+      d.categoria==='Fator Externo/Parada Planejada' &&
+      !isParadaFinalTurno(d) &&
+      diasL.has(d.dia_prod||d.data)
+    ).reduce((s,d)=>s+d.duracao/60, 0);
+    total += Math.max(0, pHL_l - Math.min(ppL, pHL_l));
+  });
+  return total;
 }
 function allDates(){
   const anoRef=(fParadas.length&&fParadas[0].data)?fParadas[0].data.slice(0,4)
@@ -2043,9 +2063,10 @@ function allDates(){
   return[...s].filter(Boolean).sort();
 }
 function calcOEE(linha){
-  const pHL=periodHoursPerLinha(linha); // dias com apontamento de produção × horas/dia
-  // Perdas de disponibilidade: excluir Setup/Planejadas E dias sem produção
-  const diasValidos = diasComProducao(linha);
+  const pHL=periodHoursPerLinha(linha);
+  if(pHL===0) return {oee:0,disp:0,perf:0,qual:0};
+  // Dias válidos: produção > 0 OU parada planejada
+  const diasValidos = diasValidosLinha(linha);
   const perdasDisp=fParadas.filter(d=>
     d.linha===linha &&
     !CATS_EXCL_DISP.includes(d.categoria) &&
