@@ -1341,6 +1341,8 @@ async function loadCloud(){
     RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
     RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
     RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
+    // Normalizar campos calculados que podem estar faltando nos dados do Firebase
+    normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
     fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
     reInitFilters();
     if(d.meta&&d.meta.updatedAt){
@@ -1701,6 +1703,8 @@ async function parseWorkbook(wb,fname){
   RAW_REPROCESSO.length=0;newPerc.forEach(r=>RAW_REPROCESSO.push(r));
   RAW_CONSUMO.length=0;newCons.forEach(r=>RAW_CONSUMO.push(r));
   if(newCons._estoqueMensal) Object.assign(ESTOQUE_MENSAL={}, newCons._estoqueMensal);
+  // Normalizar campos após upload
+  normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
   fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
   reInitFilters();
 
@@ -1958,21 +1962,13 @@ function periodHours(){
   let total = 0;
   linhasR.forEach(l=>{
     const dias = diasComProducao(l);
-    console.log('[pH] linha='+l+' dias='+dias.size+' fProd.length='+fProd.length);
     if(dias.size){
-      dias.forEach(dia => {
-        const h = horasDisponivelDia(dia);
-        console.log('[pH]   dia='+dia+' h='+h);
-        total += h;
-      });
+      dias.forEach(dia => { total += horasDisponivelDia(dia); });
     }
   });
-  console.log('[pH] total='+total);
   if(total === 0){
     const uDays = Math.max(1,new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-    const fallback = uDays * horasPorDiaProdutivo() * (linhasR.length||4);
-    console.log('[pH] fallback='+fallback);
-    return fallback;
+    return uDays * horasPorDiaProdutivo() * (linhasR.length||4);
   }
   return total;
 }
@@ -2011,9 +2007,7 @@ function horasParadasProgramadasPorLinha(linha){
 function horasTotaisDisponiveis(){
   const pH = periodHours();
   const pp = horasParadasProgramadas();
-  const result = Math.max(0, pH - pp);
-  console.log('[HTD] periodHours='+pH+' horasPlanejadasProg='+pp+' result='+result+' fProd.length='+fProd.length);
-  return result;
+  return Math.max(0, pH - pp);
 }
 function allDates(){
   const anoRef=(fParadas.length&&fParadas[0].data)?fParadas[0].data.slice(0,4)
@@ -3385,6 +3379,7 @@ function tvFStartRefresh(){
           RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
           RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
           RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
+          normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
           const sync=document.getElementById('tvFSync');
           if(sync){const n=new Date();sync.textContent='Sync: '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
         }
@@ -3519,6 +3514,45 @@ document.addEventListener('keydown',e=>{
     if(e.key==='ArrowLeft')  tvPrev();
   }
 });
+
+
+// ═══ Normalizar dados após carregar do Firebase ou upload ═══
+// Recalcula dia_prod e regime caso estejam faltando
+function normalizarDados(paradas, producao){
+  // Detectar dias com T3 na produção para definir regime
+  const diasT3 = new Set(producao
+    .filter(d=>String(d.turno)==='3')
+    .map(d=>d.dia_prod||d.data)
+    .filter(Boolean));
+
+  // Normalizar produção — garantir dia_prod e regime
+  producao.forEach(r=>{
+    if(!r.dia_prod && r.data){
+      // Calcular dia_prod: se hora >= 21h pertence ao próximo dia
+      // Como a data de produção não tem hora, usar data diretamente
+      r.dia_prod = r.data;
+    }
+    if(!r.regime){
+      r.regime = diasT3.has(r.dia_prod||r.data) ? '3t' : '2t';
+    }
+  });
+
+  // Normalizar paradas — garantir dia_prod e regime
+  paradas.forEach(r=>{
+    if(!r.dia_prod && r.data){
+      r.dia_prod = r.data; // fallback simples
+    }
+    if(!r.regime){
+      r.regime = diasT3.has(r.dia_prod||r.data) ? '3t' : '2t';
+    }
+    if(!r.inicio_orig){
+      r.inicio_orig = r.inicio;
+    }
+    if(!r.evento_id && r.linha && r.inicio && r.motivo){
+      r.evento_id = r.linha+'|'+r.inicio+'|'+r.motivo;
+    }
+  });
+}
 
 // ═══════════════════════ UPDATE ALL ═══════════════════════
 // ═══════════════════════ CONSUMO × APONTAMENTO ═══════════════════════
