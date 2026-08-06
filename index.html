@@ -1951,26 +1951,28 @@ function periodHoursPerLinha(linha){
 }
 
 function periodHours(){
-  // Total = Σ por linha × Σ horas por dia com produção
   const LINHAS_REF = ['Linha 1','Linha 2','Linha 4','Linha 5'];
-  // Descobrir linhas presentes nos dados filtrados
   const srcPar  = fParadas.length ? fParadas : RAW_PARADAS;
   const linhas  = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
   const linhasR = linhas.length ? linhas : LINHAS_REF;
   let total = 0;
   linhasR.forEach(l=>{
-    const dias = diasComProducao(l); // dias com produção desta linha
+    const dias = diasComProducao(l);
+    console.log('[pH] linha='+l+' dias='+dias.size+' fProd.length='+fProd.length);
     if(dias.size){
-      dias.forEach(dia => { total += horasDisponivelDia(dia); });
-    } else {
-      // Linha sem produção no período — não conta no período
-      // (ex: linha parada por planejamento sem apontamento)
+      dias.forEach(dia => {
+        const h = horasDisponivelDia(dia);
+        console.log('[pH]   dia='+dia+' h='+h);
+        total += h;
+      });
     }
   });
+  console.log('[pH] total='+total);
   if(total === 0){
-    // Fallback: nenhuma linha tem produção — usar dias de paradas
     const uDays = Math.max(1,new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-    return uDays * horasPorDiaProdutivo() * (linhasR.length||4);
+    const fallback = uDays * horasPorDiaProdutivo() * (linhasR.length||4);
+    console.log('[pH] fallback='+fallback);
+    return fallback;
   }
   return total;
 }
@@ -2007,10 +2009,11 @@ function horasParadasProgramadasPorLinha(linha){
   ).reduce((s,d)=>s+d.duracao,0)/60;
 }
 function horasTotaisDisponiveis(){
-  // Horas Totais Disponíveis = Horas Totais do Período − Horas de Paradas Programadas
   const pH = periodHours();
   const pp = horasParadasProgramadas();
-  return Math.max(0, pH - pp);
+  const result = Math.max(0, pH - pp);
+  console.log('[HTD] periodHours='+pH+' horasPlanejadasProg='+pp+' result='+result+' fProd.length='+fProd.length);
+  return result;
 }
 function allDates(){
   const anoRef=(fParadas.length&&fParadas[0].data)?fParadas[0].data.slice(0,4)
