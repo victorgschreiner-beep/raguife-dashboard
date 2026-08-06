@@ -3605,8 +3605,9 @@ function renderReprocessoMes(){
   if(!tbody) return;
 
   // Calcular produção total por mês (dos dados filtrados de produção)
+  // Usar RAW_PRODUCAO (não fProd filtrado) — reprocesso é sempre por mês completo
   const prodPorMes = {};
-  (fProd.length ? fProd : RAW_PRODUCAO).forEach(r=>{
+  RAW_PRODUCAO.forEach(r=>{
     prodPorMes[r.mes] = (prodPorMes[r.mes]||0) + r.quantidade;
   });
 
