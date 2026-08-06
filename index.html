@@ -1351,11 +1351,7 @@ async function loadCloud(){
       document.getElementById('lastBadge').innerHTML=`Arquivo: <span>${d.meta.filename||'Firebase'}</span><br>Nuvem: <span>${ts}</span>`;
     }
     setFbStatus('online','Sincronizado ✓');
-    const nProd = RAW_PRODUCAO.length;
-    const nDiasProd = new Set(RAW_PRODUCAO.map(r=>r.dia_prod||r.data).filter(Boolean)).size;
-    console.log('[LOAD] RAW_PARADAS='+RAW_PARADAS.length+' RAW_PRODUCAO='+nProd+' dias_prod='+nDiasProd);
-    console.log('[LOAD] Amostra RAW_PRODUCAO[0]='+JSON.stringify(RAW_PRODUCAO[0]));
-    showToast(`✅ ${RAW_PARADAS.length} paradas · ${nProd} prod (${nDiasProd} dias)carregadas!`,'','✅',4000);
+    showToast(`✅ ${RAW_PARADAS.length} paradas carregadas!`,'','✅',4000);
     updateAll();
   }catch(e){setFbStatus('error','Erro');showToast('❌ '+e.message,'error','❌',6000);}
 }
