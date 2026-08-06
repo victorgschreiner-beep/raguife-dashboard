@@ -1351,7 +1351,11 @@ async function loadCloud(){
       document.getElementById('lastBadge').innerHTML=`Arquivo: <span>${d.meta.filename||'Firebase'}</span><br>Nuvem: <span>${ts}</span>`;
     }
     setFbStatus('online','Sincronizado ✓');
-    showToast(`✅ ${RAW_PARADAS.length} paradas carregadas!`,'','✅',4000);
+    const nProd = RAW_PRODUCAO.length;
+    const nDiasProd = new Set(RAW_PRODUCAO.map(r=>r.dia_prod||r.data).filter(Boolean)).size;
+    console.log('[LOAD] RAW_PARADAS='+RAW_PARADAS.length+' RAW_PRODUCAO='+nProd+' dias_prod='+nDiasProd);
+    console.log('[LOAD] Amostra RAW_PRODUCAO[0]='+JSON.stringify(RAW_PRODUCAO[0]));
+    showToast(`✅ ${RAW_PARADAS.length} paradas · ${nProd} prod (${nDiasProd} dias)carregadas!`,'','✅',4000);
     updateAll();
   }catch(e){setFbStatus('error','Erro');showToast('❌ '+e.message,'error','❌',6000);}
 }
@@ -1960,15 +1964,27 @@ function periodHours(){
   const linhas  = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
   const linhasR = linhas.length ? linhas : LINHAS_REF;
   let total = 0;
+
+  // Tentar usando diasComProducao (fProd)
   linhasR.forEach(l=>{
     const dias = diasComProducao(l);
     if(dias.size){
       dias.forEach(dia => { total += horasDisponivelDia(dia); });
     }
   });
+
+  // Se ainda 0, fProd pode estar vazio — usar dias de fParadas como fallback
   if(total === 0){
-    const uDays = Math.max(1,new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean)).size);
-    return uDays * horasPorDiaProdutivo() * (linhasR.length||4);
+    const diasPar = new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean));
+    if(diasPar.size > 0){
+      // Calcular horas por dia usando regime detectado das paradas
+      diasPar.forEach(dia => {
+        total += horasDisponivelDia(dia) * (linhasR.length||4);
+      });
+      console.log('[pH] fallback via paradas: '+total+'h ('+diasPar.size+' dias)');
+    } else {
+      total = Math.max(1, diasPar.size||1) * horasPorDiaProdutivo() * (linhasR.length||4);
+    }
   }
   return total;
 }
