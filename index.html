@@ -1950,43 +1950,51 @@ function horasDisponivelDia(diaProd){
 }
 
 function periodHoursPerLinha(linha){
-  // Usa diasComProducao (baseado em fProd) para garantir só dias com apontamento
-  const dias = diasComProducao(linha);
-  if(!dias.size) return horasPorDiaProdutivo(); // fallback 1 dia
-  let total = 0;
-  dias.forEach(dia => { total += horasDisponivelDia(dia); });
-  return total;
+  // Dias com produção desta linha
+  const srcProd = fProd.length ? fProd : RAW_PRODUCAO;
+  const srcL    = linha ? srcProd.filter(d=>d.linha===linha) : srcProd;
+  const dias    = new Set(srcL.map(d=>d.dia_prod||d.data).filter(Boolean));
+  if(!dias.size){
+    // Fallback: usar dias de paradas desta linha
+    const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
+    const parL   = linha ? srcPar.filter(d=>d.linha===linha) : srcPar;
+    const diasPar= new Set(parL.map(d=>d.dia_prod||d.data).filter(Boolean));
+    if(!diasPar.size) return horasPorDiaProdutivo();
+    let total=0; diasPar.forEach(d=>{ total+=horasDisponivelDia(d); }); return total;
+  }
+  let total=0; dias.forEach(dia=>{ total+=horasDisponivelDia(dia); }); return total;
 }
 
 function periodHours(){
-  const LINHAS_REF = ['Linha 1','Linha 2','Linha 4','Linha 5'];
+  // Abordagem direta: dias únicos com produção × horas/dia × nLinhas
+  // Usa fProd se disponível, senão RAW_PRODUCAO
+  const srcProd = fProd.length ? fProd : RAW_PRODUCAO;
   const srcPar  = fParadas.length ? fParadas : RAW_PARADAS;
-  const linhas  = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
-  const linhasR = linhas.length ? linhas : LINHAS_REF;
-  let total = 0;
+  const LINHAS_REF = ['Linha 1','Linha 2','Linha 4','Linha 5'];
 
-  // Tentar usando diasComProducao (fProd)
-  linhasR.forEach(l=>{
-    const dias = diasComProducao(l);
-    if(dias.size){
-      dias.forEach(dia => { total += horasDisponivelDia(dia); });
-    }
-  });
+  // Linhas presentes
+  const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
+  const nL     = linhas.length || LINHAS_REF.length;
 
-  // Se ainda 0, fProd pode estar vazio — usar dias de fParadas como fallback
-  if(total === 0){
-    const diasPar = new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean));
-    if(diasPar.size > 0){
-      // Calcular horas por dia usando regime detectado das paradas
-      diasPar.forEach(dia => {
-        total += horasDisponivelDia(dia) * (linhasR.length||4);
-      });
-      console.log('[pH] fallback via paradas: '+total+'h ('+diasPar.size+' dias)');
-    } else {
-      total = Math.max(1, diasPar.size||1) * horasPorDiaProdutivo() * (linhasR.length||4);
-    }
+  if(srcProd.length > 0){
+    // Dias com produção — agrupar por linha para contar corretamente
+    let total = 0;
+    linhas.forEach(l=>{
+      const diasL = new Set(srcProd.filter(d=>d.linha===l).map(d=>d.dia_prod||d.data).filter(Boolean));
+      diasL.forEach(dia=>{ total += horasDisponivelDia(dia); });
+    });
+    if(total > 0) return total;
   }
-  return total;
+
+  // Fallback: usar dias de paradas se não há produção
+  const diasPar = new Set(srcPar.map(d=>d.dia_prod||d.data).filter(Boolean));
+  if(diasPar.size > 0){
+    let total = 0;
+    diasPar.forEach(dia=>{ total += horasDisponivelDia(dia) * nL; });
+    return total;
+  }
+
+  return horasPorDiaProdutivo() * nL;
 }
 function isParadaFinalTurno(d){
   // "Parada Final de Turno" = período sem turno no regime 2T (15h–21h)
