@@ -3879,12 +3879,23 @@ function updateAll(){
 }
 Chart.defaults.font.family='DM Mono';
 Chart.defaults.color='#666';
-// Sanitizar PFTs absurdas nos dados brutos (Firebase pode ter dados antigos)
+// Sanitizar e normalizar dados brutos embutidos
 RAW_PARADAS.forEach(r=>{
-  if(r.categoria==='Fator Externo/Parada Planejada' && 
+  // Recalcular dia_prod do horário
+  if(r.inicio && !r.dia_prod){
+    const m=r.inicio.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+    if(m){
+      const hora=parseInt(m[4]);
+      const d=new Date(+m[3],+m[2]-1,+m[1]);
+      if(hora>=21)d.setDate(d.getDate()+1);
+      r.dia_prod=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+  }
+  // Limitar PFTs absurdas
+  if(r.categoria==='Fator Externo/Parada Planejada' &&
      r.motivo && r.motivo.toLowerCase().includes('parada final de turno') &&
      r.duracao > 600){
-    r.duracao = Math.min(r.duracao, 360); // máximo 6h
+    r.duracao = Math.min(r.duracao, 360);
   }
 });
 fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
