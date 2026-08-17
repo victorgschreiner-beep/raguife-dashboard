@@ -1341,8 +1341,32 @@ async function loadCloud(){
     RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
     RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
     RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
-    // Normalizar campos calculados que podem estar faltando nos dados do Firebase
+    // Normalizar e sanitizar dados do Firebase
     normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
+    // Recalcular duração de PFTs a partir de inicio/fim quando absurda
+    RAW_PARADAS.forEach(r=>{
+      if(r.duracao > 600 && r.categoria === 'Fator Externo/Parada Planejada'){
+        // Tentar recalcular pelo horário
+        const parseDT = s=>{
+          if(!s) return null;
+          const m=s.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+          return m ? new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]) : null;
+        };
+        const ini = parseDT(r.inicio);
+        const fim = parseDT(r.fim);
+        if(ini && fim && fim > ini){
+          const durReal = (fim - ini) / 60000;
+          // Se a duração real for também absurda, limitar
+          if(durReal > 600){
+            const maxMin = (r.regime||'3t') === '2t' ? 360 : 480;
+            console.warn('[LOAD] PFT absurda limitada:', r.linha, r.inicio, durReal+'min →', maxMin+'min');
+            r.duracao = maxMin;
+          } else {
+            r.duracao = Math.round(durReal * 100) / 100;
+          }
+        }
+      }
+    });
     fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
     reInitFilters();
     if(d.meta&&d.meta.updatedAt){
