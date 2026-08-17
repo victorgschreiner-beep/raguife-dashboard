@@ -1356,7 +1356,8 @@ async function loadCloud(){
         const d = new Date(ini);
         if(hora >= 21) d.setDate(d.getDate()+1);
         r.dia_prod = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-        r.mes = ini.getFullYear()+'-'+String(ini.getMonth()+1).padStart(2,'0');
+        // mes baseado no dia_prod (não no inicio)
+        r.mes = r.dia_prod.slice(0,7);
       }
       // Recalcular duração do inicio/fim real
       if(r.inicio && r.fim){
@@ -3890,14 +3891,16 @@ Chart.defaults.font.family='DM Mono';
 Chart.defaults.color='#666';
 // Sanitizar e normalizar dados brutos embutidos
 RAW_PARADAS.forEach(r=>{
-  // Recalcular dia_prod do horário
-  if(r.inicio && !r.dia_prod){
+  // Recalcular dia_prod e mes do horário de início
+  if(r.inicio){
     const m=r.inicio.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
     if(m){
       const hora=parseInt(m[4]);
       const d=new Date(+m[3],+m[2]-1,+m[1]);
       if(hora>=21)d.setDate(d.getDate()+1);
       r.dia_prod=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      // mes sempre baseado no dia_prod
+      r.mes=r.dia_prod.slice(0,7);
     }
   }
   // Limitar PFTs absurdas
