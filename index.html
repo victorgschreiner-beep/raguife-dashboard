@@ -2148,7 +2148,7 @@ function updateVisao(){
 
   // Cat donut
   destroyChart('cVCat');
-  const bycat={};fParadas.forEach(d=>{bycat[d.categoria]=(bycat[d.categoria]||0)+d.duracao/60;});
+  const bycat={};fParadas.filter(d=>!isParadaFinalTurno(d)).forEach(d=>{bycat[d.categoria]=(bycat[d.categoria]||0)+d.duracao/60;});
   const cl=Object.keys(bycat);
   if(cl.length)charts['cVCat']=new Chart(document.getElementById('cVCat'),{type:'doughnut',
     data:{labels:cl,datasets:[{data:cl.map(k=>+bycat[k].toFixed(2)),backgroundColor:cl.map(k=>CC[k]||'#888'),borderColor:'#fff',borderWidth:3}]},
@@ -2243,7 +2243,7 @@ function updateProducao(){
 
 // ═══════════════════════ PARADAS & OEE ═══════════════════════
 function updatePerdas(){
-  const totalMin=fParadas.reduce((s,d)=>s+d.duracao,0);
+  const totalMin=fParadas.filter(d=>!isParadaFinalTurno(d)).reduce((s,d)=>s+d.duracao,0);
   const semPlan=fParadas.filter(d=>['Manutenção','Operacional','Utilidades'].includes(d.categoria)&&!isParadaFinalTurno(d)).reduce((s,d)=>s+d.duracao,0);
   const bycat={};fParadas.forEach(d=>{bycat[d.categoria]=(bycat[d.categoria]||0)+d.duracao;});
   const maxMin=fParadas.reduce((m,d)=>d.duracao>m?d.duracao:m,0);
@@ -3879,6 +3879,14 @@ function updateAll(){
 }
 Chart.defaults.font.family='DM Mono';
 Chart.defaults.color='#666';
+// Sanitizar PFTs absurdas nos dados brutos (Firebase pode ter dados antigos)
+RAW_PARADAS.forEach(r=>{
+  if(r.categoria==='Fator Externo/Parada Planejada' && 
+     r.motivo && r.motivo.toLowerCase().includes('parada final de turno') &&
+     r.duracao > 600){
+    r.duracao = Math.min(r.duracao, 360); // máximo 6h
+  }
+});
 fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
 initFilters();
 document.getElementById('cShown').textContent=RAW_PARADAS.length;
