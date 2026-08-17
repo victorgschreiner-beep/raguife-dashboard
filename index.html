@@ -2,9 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Dashboard Raguife — Produção & Perdas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2202,22 +2199,13 @@ function updateVisao(){
   });
 
   // Cat donut
+  destroyChart('cVCat');
   const bycat={};fParadas.forEach(d=>{bycat[d.categoria]=(bycat[d.categoria]||0)+d.duracao/60;});
   const cl=Object.keys(bycat);
-  if(cl.length){
-    if(charts['cVCat']){
-      // Atualizar dados do chart existente
-      charts['cVCat'].data.labels = cl;
-      charts['cVCat'].data.datasets[0].data = cl.map(k=>+bycat[k].toFixed(2));
-      charts['cVCat'].data.datasets[0].backgroundColor = cl.map(k=>CC[k]||'#888');
-      charts['cVCat'].update();
-    } else {
-      charts['cVCat']=new Chart(document.getElementById('cVCat'),{type:'doughnut',
-      data:{labels:cl,datasets:[{data:cl.map(k=>+bycat[k].toFixed(2)),backgroundColor:cl.map(k=>CC[k]||'#888'),borderColor:'#fff',borderWidth:3}]},
+  if(cl.length)charts['cVCat']=new Chart(document.getElementById('cVCat'),{type:'doughnut',
+    data:{labels:cl,datasets:[{data:cl.map(k=>+bycat[k].toFixed(2)),backgroundColor:cl.map(k=>CC[k]||'#888'),borderColor:'#fff',borderWidth:3}]},
     options:{cutout:'62%',plugins:{legend:{position:'right',labels:{color:'#444',font:{family:'DM Mono',size:10},boxWidth:12,padding:8}},
       tooltip:{callbacks:{label:c=>` ${c.label}: ${c.parsed.toFixed(2)}h`}}}}});
-    }}
-  }
 
   // Prod por linha
   destroyChart('cVPLinha');
