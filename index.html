@@ -1341,32 +1341,41 @@ async function loadCloud(){
     RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
     RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
     RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
-    // Normalizar e sanitizar dados do Firebase
-    normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
-    // Recalcular duração de PFTs a partir de inicio/fim quando absurda
+    // Normalizar TODOS os registros do Firebase
+    // Recalcular dia_prod do horário (não confiar no campo salvo)
+    const parseDT2 = s=>{
+      if(!s) return null;
+      const m=s.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+      return m ? new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]) : null;
+    };
     RAW_PARADAS.forEach(r=>{
-      if(r.duracao > 600 && r.categoria === 'Fator Externo/Parada Planejada'){
-        // Tentar recalcular pelo horário
-        const parseDT = s=>{
-          if(!s) return null;
-          const m=s.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
-          return m ? new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]) : null;
-        };
-        const ini = parseDT(r.inicio);
-        const fim = parseDT(r.fim);
-        if(ini && fim && fim > ini){
-          const durReal = (fim - ini) / 60000;
-          // Se a duração real for também absurda, limitar
-          if(durReal > 600){
-            const maxMin = (r.regime||'3t') === '2t' ? 360 : 480;
-            console.warn('[LOAD] PFT absurda limitada:', r.linha, r.inicio, durReal+'min →', maxMin+'min');
-            r.duracao = maxMin;
-          } else {
+      // Sempre recalcular dia_prod do horário de início
+      const ini = parseDT2(r.inicio);
+      if(ini){
+        const hora = ini.getHours();
+        const d = new Date(ini);
+        if(hora >= 21) d.setDate(d.getDate()+1);
+        r.dia_prod = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        r.mes = ini.getFullYear()+'-'+String(ini.getMonth()+1).padStart(2,'0');
+      }
+      // Recalcular duração do inicio/fim real
+      if(r.inicio && r.fim){
+        const ini2 = parseDT2(r.inicio);
+        const fim2 = parseDT2(r.fim);
+        if(ini2 && fim2 && fim2 > ini2){
+          const durReal = (fim2 - ini2) / 60000;
+          // Limitar PFTs absurdas
+          if(r.categoria==='Fator Externo/Parada Planejada' &&
+             r.motivo && r.motivo.toLowerCase().includes('parada final de turno') &&
+             durReal > 600){
+            r.duracao = Math.min(durReal, 360);
+          } else if(durReal > 0 && durReal < 999999){
             r.duracao = Math.round(durReal * 100) / 100;
           }
         }
       }
     });
+    normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
     fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fConsumo=[...RAW_CONSUMO];
     reInitFilters();
     if(d.meta&&d.meta.updatedAt){
