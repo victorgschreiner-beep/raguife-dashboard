@@ -2081,7 +2081,7 @@ function diasComProducao(linha){
   return new Set(srcL.map(d=>d.dia_prod||d.data).filter(Boolean));
 }
 function horasParadasProgramadas(){
-  // Paradas planejadas nos dias válidos (prod>0 OU planejada) por linha
+  // Todas as paradas planejadas (incl. PFT) nos dias válidos por linha
   const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
   const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
   let total = 0;
@@ -2090,7 +2090,6 @@ function horasParadasProgramadas(){
     total += fParadas.filter(d=>
       d.linha===l &&
       d.categoria==='Fator Externo/Parada Planejada' &&
-      !isParadaFinalTurno(d) &&
       diasL.has(d.dia_prod||d.data)
     ).reduce((s,d)=>s+d.duracao/60, 0);
   });
@@ -2107,7 +2106,7 @@ function horasParadasProgramadasPorLinha(linha){
   ).reduce((s,d)=>s+d.duracao,0)/60;
 }
 function horasTotaisDisponiveis(){
-  // Por linha: período (prod>0 OU planejada) - horas planejadas nos dias válidos
+  // Por linha: período (prod>0 OU planejada) - TODAS as horas planejadas (incl. PFT)
   const srcPar = fParadas.length ? fParadas : RAW_PARADAS;
   const linhas = [...new Set(srcPar.map(d=>d.linha).filter(Boolean))];
   let total = 0;
@@ -2115,10 +2114,10 @@ function horasTotaisDisponiveis(){
     const pHL_l = periodHoursPerLinha(l);
     if(pHL_l===0) return;
     const diasL = diasValidosLinha(l);
+    // Incluir PFT na subtração — representa horas sem turno no regime 2T
     const ppL = fParadas.filter(d=>
       d.linha===l &&
       d.categoria==='Fator Externo/Parada Planejada' &&
-      !isParadaFinalTurno(d) &&
       diasL.has(d.dia_prod||d.data)
     ).reduce((s,d)=>s+d.duracao/60, 0);
     total += Math.max(0, pHL_l - Math.min(ppL, pHL_l));
