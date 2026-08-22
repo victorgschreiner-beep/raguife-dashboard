@@ -1,0 +1,10 @@
+{
+  "_comentario": "Renomeie este arquivo para firebase-config.json (mesma pasta) e preencha com os valores reais do seu projeto Firebase — Configurações do projeto > Seus apps > SDK setup and configuration. Depois do build (npm run build), este arquivo é copiado automaticamente para dist/ e fica publicado ao lado do index.html: é o que faz QUALQUER dispositivo que abrir a URL do app (inclusive o celular de um colaborador que nunca visitou a tela de Configurações) conectar automaticamente ao mesmo backend. A tela Configurações > Conexão em Tempo Real, dentro do próprio app, gera e baixa esse arquivo já preenchido para você — não é necessário editar manualmente.",
+  "apiKey": "",
+  "authDomain": "",
+  "databaseURL": "",
+  "projectId": "",
+  "appId": "",
+  "storageBucket": "",
+  "messagingSenderId": ""
+}
