@@ -4102,13 +4102,13 @@ function renderTop5(){
       const dpFmt= dp.length>=10?dp.slice(8)+'/'+dp.slice(5,7):dp;
       tbody.innerHTML += '<tr'+(i===0?' style="border-top:2px solid var(--border)"':'')+'>'+
         (i===0?'<td rowspan="'+top5.length+'" style="font-weight:900;color:var(--gdk);vertical-align:top;padding-top:10px">'+lbl+'</td>':'')+
-        '<td style="color:var(--muted);font-family:'DM Mono',monospace">'+(i+1)+'</td>'+
+        '<td style="color:var(--muted);font-family:DM Mono,monospace">'+(i+1)+'</td>'+
         '<td style="font-weight:800;color:'+lc+'">'+r.linha+'</td>'+
         '<td style="max-width:220px;word-break:break-word">'+r.motivo+'</td>'+
         '<td><span class="badge '+bc+'">'+r.categoria.split('/')[0]+'</span></td>'+
-        '<td style="font-family:'DM Mono',monospace;font-weight:800;color:'+durCor+'">'+durH+'h</td>'+
+        '<td style="font-family:DM Mono,monospace;font-weight:800;color:'+durCor+'">'+durH+'h</td>'+
         '<td><span class="bturno bt'+r.turno+'">T'+r.turno+'</span></td>'+
-        '<td style="font-family:'DM Mono',monospace;color:var(--muted)">'+dpFmt+'</td>'+
+        '<td style="font-family:DM Mono,monospace;color:var(--muted)">'+dpFmt+'</td>'+
         '</tr>';
     });
   });
