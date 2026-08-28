@@ -2236,7 +2236,77 @@ function updateVisao(){
 }
 
 // ═══════════════════════ PRODUÇÃO ═══════════════════════
+
+// ═══ RENDERIZAR TABELA DE EFETIVIDADE ═══
+function renderEfetividade(){
+  const src = fProd.length ? fProd : RAW_PRODUCAO;
+  // Filtrar apenas registros a partir de 28/08/2026
+  const efetRecs = src.filter(d => isEfetividade(d.dia_prod||d.data||''));
+  
+  const tbl = document.getElementById('tabelaEfetividade');
+  const st  = document.getElementById('stEfetividade');
+  const tbody = document.getElementById('tbodyEfetividade');
+  if(!tbl || !tbody) return;
+  
+  if(!efetRecs.length){
+    tbl.style.display='none';
+    if(st) st.style.display='none';
+    return;
+  }
+  tbl.style.display='block';
+  if(st) st.style.display='block';
+
+  tbody.innerHTML = '';
+  // Ordenar por data, linha, turno
+  const sorted = efetRecs.slice().sort((a,b)=>{
+    const da = a.dia_prod||a.data||''; const db = b.dia_prod||b.data||'';
+    if(da!==db) return da<db?-1:1;
+    if(a.linha!==b.linha) return a.linha<b.linha?-1:1;
+    return Number(a.turno)-Number(b.turno);
+  });
+
+  let totalProd=0, totalMetaCheia=0, totalMetaAjust=0;
+
+  sorted.forEach(r=>{
+    const dp   = r.dia_prod || r.data || '';
+    const prod = r.quantidade || 0;
+    const meta = r.meta || 0;
+    const { hParadas, taxa_h, metaAjust, hTurno } = calcEfetividadeTurno(r.linha, r.turno, dp, meta);
+    const efet = metaAjust > 0 ? (prod/metaAjust*100) : 100;
+    const corEfet = efet>=95?'#024f2b':efet>=85?'#739630':efet>=70?'#d97706':'#c0392b';
+    const dpFmt = dp.slice(8)+'/'+dp.slice(5,7);
+    
+    totalProd      += prod;
+    totalMetaCheia += meta;
+    totalMetaAjust += metaAjust;
+
+    tbody.innerHTML += `<tr style="border-bottom:1px solid #e0e0d8">
+      <td style="padding:6px 10px;color:#555">${dpFmt}</td>
+      <td style="padding:6px 10px;text-align:center;font-weight:700;color:#024f2b">${r.linha}</td>
+      <td style="padding:6px 10px;text-align:center">T${r.turno}</td>
+      <td style="padding:6px 10px;text-align:center">${(prod/1000).toFixed(1)}k</td>
+      <td style="padding:6px 10px;text-align:center;color:#888">${(meta/1000).toFixed(1)}k</td>
+      <td style="padding:6px 10px;text-align:center;color:${hParadas>0?'#c0392b':'#888'}">${hParadas.toFixed(2)}h</td>
+      <td style="padding:6px 10px;text-align:center;font-weight:700">${(metaAjust/1000).toFixed(1)}k</td>
+      <td style="padding:6px 10px;text-align:center;font-weight:900;color:${corEfet}">${efet.toFixed(1)}%</td>
+    </tr>`;
+  });
+
+  // Linha de total
+  const efetTotal = totalMetaAjust>0?(totalProd/totalMetaAjust*100):100;
+  const corTotal  = efetTotal>=95?'#024f2b':efetTotal>=85?'#739630':efetTotal>=70?'#d97706':'#c0392b';
+  tbody.innerHTML += `<tr style="background:#e8f0e0;font-weight:800;border-top:2px solid #024f2b">
+    <td colspan="3" style="padding:7px 10px;color:#024f2b">TOTAL</td>
+    <td style="padding:7px 10px;text-align:center">${(totalProd/1000).toFixed(1)}k</td>
+    <td style="padding:7px 10px;text-align:center;color:#888">${(totalMetaCheia/1000).toFixed(1)}k</td>
+    <td style="padding:7px 10px;text-align:center">—</td>
+    <td style="padding:7px 10px;text-align:center">${(totalMetaAjust/1000).toFixed(1)}k</td>
+    <td style="padding:7px 10px;text-align:center;color:${corTotal}">${efetTotal.toFixed(1)}%</td>
+  </tr>`;
+}
+
 function updateProducao(){
+  renderEfetividade(); // Tabela de efetividade a partir de 28/08
   const total=fProd.reduce((s,d)=>s+d.quantidade,0);
   const meta=fProd.reduce((s,d)=>s+(d.meta||0),0);
   const byL={};fProd.forEach(d=>{byL[d.linha]=(byL[d.linha]||0)+d.quantidade;});
@@ -2656,33 +2726,10 @@ function updateComparativo(){
     options:{plugins:{legend:{labels:{color:'#444',font:{family:'DM Mono',size:9},boxWidth:10}}},
       scales:{x:{ticks:bT,grid:bG},y:{ticks:bT,grid:bG,title:{display:true,text:'kg',color:tc,font:{size:10}}}}}});
 
-  // Top 5 por mês
-  document.getElementById('top5Body').innerHTML='';
-  meses.forEach(m=>{
-    const lbl=RAW_PARADAS.find(d=>d.mes===m)?.mes_label||m;
-    const mPar=RAW_PARADAS.filter(d=>d.mes===m);
-    // Agrupar por motivo+linha para não contar splits separados
-    const byKey={};
-    mPar.forEach(d=>{
-      const k=`${d.linha}||${d.motivo}||${d.data}`;
-      if(!byKey[k]){byKey[k]={...d,duracao:0};}
-      byKey[k].duracao+=d.duracao;
-    });
-    const top5=Object.values(byKey).sort((a,b)=>b.duracao-a.duracao).slice(0,5);
-    top5.forEach((r,i)=>{
-      document.getElementById('top5Body').innerHTML+=`<tr>
-        <td style="font-weight:800;color:var(--gdk)">${i===0?lbl:''}</td>
-        <td style="font-family:'DM Mono',monospace;color:var(--muted)">${i+1}</td>
-        <td style="font-weight:700;color:${LC[r.linha]||'#024f2b'}">${r.linha}</td>
-        <td style="max-width:200px;word-break:break-word">${r.motivo}</td>
-        <td><span class="badge ${CB[r.categoria]||''}">${r.categoria.split('/')[0]}</span></td>
-        <td style="font-family:'DM Mono',monospace;font-weight:800;color:var(--red)">${(r.duracao/60).toFixed(2)}h</td>
-        <td><span class="bturno bt${r.turno}">T${r.turno}</span></td>
-        <td style="font-family:'DM Mono',monospace;color:var(--muted)">${r.dia}</td>
-      </tr>`;
-    });
-  });
-}
+  // Top 5 por mês — renderizado pela função renderTop5 com filtro de categoria
+  _top5Cat = 'all'; // resetar filtro ao atualizar comparativo
+  document.querySelectorAll('.top5-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat==='all'));
+  renderTop5();
 
 // ═══════════════════════ PERCAS ═══════════════════════
 function updatePercas(){
