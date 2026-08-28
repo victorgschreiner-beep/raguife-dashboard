@@ -2730,6 +2730,7 @@ function updateComparativo(){
   _top5Cat = 'all'; // resetar filtro ao atualizar comparativo
   document.querySelectorAll('.top5-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat==='all'));
   renderTop5();
+}
 
 // ═══════════════════════ PERCAS ═══════════════════════
 function updatePercas(){
@@ -4048,6 +4049,109 @@ fParadas=[...RAW_PARADAS];fProd=[...RAW_PRODUCAO];fRepr=[...RAW_REPROCESSO];fCon
 initFilters();
 document.getElementById('cShown').textContent=RAW_PARADAS.length;
 document.getElementById('lastBadge').textContent='Dados embutidos · '+RAW_PARADAS.length+' paradas';
+// ═══ FILTRO CATEGORIA TOP5 COMPARATIVO ═══
+let _top5Cat = 'all';
+
+function setTop5Cat(cat){
+  _top5Cat = cat;
+  document.querySelectorAll('.top5-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.cat === cat);
+  });
+  const sub = document.getElementById('top5Sub');
+  if(sub){
+    const labels = {
+      'all': 'duracao total · todas as categorias',
+      'Manutencao': 'filtrando apenas Manutencao',
+      'Manutenção': 'filtrando apenas Manutenção',
+      'Operacional': 'filtrando apenas Operacional',
+      'Fator Externo/Parada Planejada': 'filtrando apenas Planejadas',
+      'Setup': 'filtrando apenas Setup'
+    };
+    sub.textContent = labels[cat] || 'todas as linhas';
+  }
+  renderTop5();
+}
+
+function renderTop5(){
+  const meses = [...new Set([...RAW_PARADAS.map(d=>d.mes),...RAW_PRODUCAO.map(d=>d.mes)])].sort();
+  const tbody = document.getElementById('top5Body');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+
+  meses.forEach(m=>{
+    const lbl = RAW_PARADAS.find(d=>d.mes===m)?.mes_label || RAW_PRODUCAO.find(d=>d.mes===m)?.mes_label || m;
+    let mPar = RAW_PARADAS.filter(d=>d.mes===m);
+    if(_top5Cat !== 'all') mPar = mPar.filter(d=>d.categoria===_top5Cat);
+
+    const byKey={};
+    mPar.forEach(d=>{
+      const k=d.linha+'||'+d.motivo+'||'+(d.inicio_orig||d.inicio);
+      if(!byKey[k]){byKey[k]={...d,duracao:0};}
+      byKey[k].duracao += d.duracao;
+    });
+
+    const top5 = Object.values(byKey).sort((a,b)=>b.duracao-a.duracao).slice(0,5);
+    if(!top5.length) return;
+
+    top5.forEach((r,i)=>{
+      const bc   = CB[r.categoria]||'';
+      const lc   = LC[r.linha]||'var(--gdk)';
+      const durH = (r.duracao/60).toFixed(2);
+      const durCor = r.duracao/60>=9?'var(--red)':r.duracao/60>=3?'var(--amber)':'var(--gdk)';
+      const dp   = r.dia_prod||r.data||'';
+      const dpFmt= dp.length>=10?dp.slice(8)+'/'+dp.slice(5,7):dp;
+      tbody.innerHTML += '<tr'+(i===0?' style="border-top:2px solid var(--border)"':'')+'>'+
+        (i===0?'<td rowspan="'+top5.length+'" style="font-weight:900;color:var(--gdk);vertical-align:top;padding-top:10px">'+lbl+'</td>':'')+
+        '<td style="color:var(--muted);font-family:'DM Mono',monospace">'+(i+1)+'</td>'+
+        '<td style="font-weight:800;color:'+lc+'">'+r.linha+'</td>'+
+        '<td style="max-width:220px;word-break:break-word">'+r.motivo+'</td>'+
+        '<td><span class="badge '+bc+'">'+r.categoria.split('/')[0]+'</span></td>'+
+        '<td style="font-family:'DM Mono',monospace;font-weight:800;color:'+durCor+'">'+durH+'h</td>'+
+        '<td><span class="bturno bt'+r.turno+'">T'+r.turno+'</span></td>'+
+        '<td style="font-family:'DM Mono',monospace;color:var(--muted)">'+dpFmt+'</td>'+
+        '</tr>';
+    });
+  });
+}
+
+// ═══ EFETIVIDADE (a partir de 28/08/2026) ═══
+const DATA_EFETIVIDADE = '2026-08-28';
+
+function isEfetividade(diaProd){
+  return diaProd >= DATA_EFETIVIDADE;
+}
+
+function calcEfetividadeTurno(linha, turno, diaProd, meta){
+  const regime  = getRegimeDia(diaProd);
+  const hTurno  = regime === '2t' ? 9 : 8;
+  const taxa_h  = meta / hTurno;
+  const hParadas= (fParadas.length ? fParadas : RAW_PARADAS)
+    .filter(d=>d.linha===linha && d.turno===String(turno) && (d.dia_prod||d.data)===diaProd)
+    .reduce((s,d)=>s+d.duracao/60, 0);
+  const metaAjust = Math.max(0, meta - (hParadas * taxa_h));
+  return { hParadas, taxa_h, metaAjust, hTurno };
+}
+
+function calcPerformanceLinha(linha){
+  const src = fProd.length ? fProd : RAW_PRODUCAO;
+  const registros = src.filter(d=>d.linha===linha);
+  let prodTotal=0, metaTotal=0;
+  registros.forEach(r=>{
+    const dp   = r.dia_prod||r.data||'';
+    const prod = r.quantidade||0;
+    const meta = r.meta||0;
+    prodTotal += prod;
+    if(isEfetividade(dp) && meta>0){
+      const { metaAjust } = calcEfetividadeTurno(r.linha, r.turno, dp, meta);
+      metaTotal += metaAjust>0 ? metaAjust : meta;
+    } else {
+      metaTotal += meta;
+    }
+  });
+  return { prodTotal, metaTotal, perf: metaTotal>0 ? prodTotal/metaTotal : 1 };
+}
+
+
 updateAll();
 </script>
 </body>
