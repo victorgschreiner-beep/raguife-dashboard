@@ -3277,18 +3277,49 @@ function tvFmtDia(dia){
 }
 
 function tvCalcOEE(dia,linha){
-  const nDias=dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size):1;
-  const pHL=nDias*24;
-  const par =tvGetParDia(dia).filter(d=>d.linha===linha);
-  const prod=tvGetProdDia(dia).filter(d=>d.linha===linha);
-  const perc=tvGetPercDia(dia).filter(d=>d.linha===linha);
-  const pD  =par.filter(d=>!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-  const disp=Math.max(0,Math.min(1,(pHL-pD)/pHL));
-  const real=prod.reduce((s,d)=>s+d.quantidade,0);
-  const meta=prod.reduce((s,d)=>s+(d.meta||0),0);
-  const perf=meta>0?Math.min(1,real/meta):(real>0?1:0);
-  const percs=perc.reduce((s,d)=>s+d.quantidade,0);
-  const qual=real>0?Math.max(0,(real-percs)/real):1;
+  const par  = tvGetParDia(dia).filter(d=>d.linha===linha);
+  const prod = tvGetProdDia(dia).filter(d=>d.linha===linha);
+  const perc = tvGetPercDia(dia).filter(d=>d.linha===linha);
+
+  // Período: usa diasValidosLinha se disponível, senão fallback
+  let pHL = 0;
+  if(dia==='all'){
+    const nDias = Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size);
+    const regime = getRegimePeriodo ? getRegimePeriodo() : '3t';
+    pHL = nDias * (regime==='2t'?18:24);
+  } else {
+    const regime = getRegimeDia ? getRegimeDia(dia) : '3t';
+    pHL = regime==='2t' ? 18 : 24;
+  }
+
+  // Disponibilidade — exclui Setup e Planejadas e PFT
+  const pD = par.filter(d=>
+    !CATS_EXCL_DISP.includes(d.categoria) &&
+    !(isParadaFinalTurno && isParadaFinalTurno(d))
+  ).reduce((s,d)=>s+d.duracao/60,0);
+  const disp = Math.max(0,Math.min(1,(pHL-pD)/pHL));
+
+  // Performance / Efetividade — usa meta ajustada a partir de 28/08
+  const real = prod.reduce((s,d)=>s+d.quantidade,0);
+  let metaEfet = 0;
+  prod.forEach(r=>{
+    const dp   = r.dia_prod||r.data||'';
+    const meta = r.meta||0;
+    if(meta<=0){ return; }
+    if(isEfetividade && isEfetividade(dp) && calcEfetividadeTurno){
+      const {metaAjust} = calcEfetividadeTurno(r.linha, r.turno, dp, meta);
+      metaEfet += metaAjust>0 ? metaAjust : meta;
+    } else {
+      metaEfet += meta;
+    }
+  });
+  const perf = metaEfet>0 ? Math.min(1,real/metaEfet) : (real>0?1:0);
+
+  // Qualidade
+  const percs = perc.reduce((s,d)=>s+d.quantidade,0);
+  const qual  = real>0 ? Math.max(0,(real-percs)/real) : 1;
+
+  const meta = prod.reduce((s,d)=>s+(d.meta||0),0);
   return{oee:disp*perf*qual*100,disp:disp*100,perf:perf*100,qual:qual*100,real,meta,percs,pD};
 }
 
