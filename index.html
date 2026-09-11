@@ -2957,10 +2957,12 @@ function renderDetPareto(data){
 
   const byMot={};
   data.forEach(r=>{
-    if(!byMot[r.motivo]) byMot[r.motivo]={h:0,n:0,cat:r.categoria};
+    if(!byMot[r.motivo]) byMot[r.motivo]={h:0,cat:r.categoria,eventos:new Set()};
+    const evId = r.evento_id || (r.linha+'|'+r.inicio_orig+'|'+r.motivo);
     byMot[r.motivo].h += r.duracao/60;
-    byMot[r.motivo].n++;
+    byMot[r.motivo].eventos.add(evId);
   });
+  Object.values(byMot).forEach(v=>{ v.n = v.eventos.size; });
   const sorted = Object.entries(byMot).sort((a,b)=>b[1].h-a[1].h).slice(0,15);
   const grand  = Object.values(byMot).reduce((s,v)=>s+v.h,0)||1;
 
@@ -3012,11 +3014,13 @@ function renderDetPareto(data){
 function renderDetResumo(data){
   const byMot={};
   data.forEach(r=>{
-    if(!byMot[r.motivo]){byMot[r.motivo]={h:0,n:0,cat:r.categoria,linhas:new Set()};}
+    if(!byMot[r.motivo]){byMot[r.motivo]={h:0,cat:r.categoria,linhas:new Set(),eventos:new Set()};}
+    const evId = r.evento_id || (r.linha+'|'+r.inicio_orig+'|'+r.motivo);
     byMot[r.motivo].h+=r.duracao/60;
-    byMot[r.motivo].n++;
+    byMot[r.motivo].eventos.add(evId);
     byMot[r.motivo].linhas.add(r.linha);
   });
+  Object.values(byMot).forEach(v=>{ v.n = v.eventos.size; });
   const allSorted = Object.entries(byMot).sort((a,b)=>b[1].h-a[1].h);
   const grand = allSorted.reduce((s,[,v])=>s+v.h,0)||1;
   const maxH  = allSorted[0]?allSorted[0][1].h:1;
