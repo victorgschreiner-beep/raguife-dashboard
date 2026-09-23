@@ -1485,6 +1485,32 @@ function horasRegime(regime){
   return regime==='3t' ? 24 : 18; // 3t: 3×8h | 2t: 9h+9h
 }
 
+// ── Horas extras de expediente (T2 além das 15h) por linha e dia ──
+function getHorasExtrasExpediente(linha, diaProd){
+  // Busca na aba Percas o registro da linha/dia com horas_extras preenchido
+  const src = fRepr.length ? fRepr : RAW_REPROCESSO;
+  let extras = 0;
+  src.forEach(r=>{
+    if(r.linha===linha && (r.dia_prod||r.data)===diaProd && r.horas_extras > 0){
+      extras = Math.max(extras, r.horas_extras);
+    }
+  });
+  return extras;
+}
+
+// ── Horas extras totais de um dia (soma das linhas com expediente estendido) ──
+function getHorasExtrasExpedienteDia(diaProd){
+  const src = fRepr.length ? fRepr : RAW_REPROCESSO;
+  const linhasComExtra = {};
+  src.forEach(r=>{
+    if((r.dia_prod||r.data)===diaProd && r.horas_extras > 0){
+      const l = r.linha;
+      linhasComExtra[l] = Math.max(linhasComExtra[l]||0, r.horas_extras);
+    }
+  });
+  return Object.values(linhasComExtra).reduce((s,v)=>s+v, 0);
+}
+
 function getTurnoRegime(dt, regime){
   // Classifica o turno baseado no regime do dia
   const h = dt.getHours() + dt.getMinutes()/60;
@@ -1673,6 +1699,24 @@ async function parseWorkbook(wb,fname){
       const r=rows[i];if(!r[0])continue;
       let d=parseDT(r[0]);if(!d)continue;
       d=new Date(anoRef,d.getMonth(),d.getDate());
+      // Col 4 (r[4]) = "Hora final de expediente" — hora extra T2 além das 15h
+      // Ex: "17:00" ou número serial do Excel representando hora
+      let horaFimExpediente = null;
+      if(r[4] !== undefined && r[4] !== null && r[4] !== ''){
+        if(r[4] instanceof Date){
+          horaFimExpediente = r[4].getHours() + r[4].getMinutes()/60;
+        } else if(typeof r[4]==='number' && r[4]>0 && r[4]<1){
+          // Fração de dia Excel: 0.5 = 12h, 0.708333 ≈ 17h
+          horaFimExpediente = r[4]*24;
+        } else if(typeof r[4]==='string' && r[4].trim()){
+          const parts=r[4].trim().split(':');
+          if(parts.length>=2) horaFimExpediente=parseInt(parts[0])+parseInt(parts[1])/60;
+        }
+      }
+      // Horas extras = hora_fim - 15h (só conta se > 15h e turno 2)
+      const horasExtras = (horaFimExpediente !== null && horaFimExpediente > 15 && String(r[2]).trim()==='2')
+        ? (horaFimExpediente - 15) : 0;
+
       newPerc.push({
         data:     fmtDate(d),
         dia_prod: getDiaProd(d),
@@ -1682,7 +1726,9 @@ async function parseWorkbook(wb,fname){
         linha:    String(r[1]||'').trim(),
         turno:    String(r[2]||'').trim(),
         quantidade:parseFloat(r[3])||0,
-        equipamento:'Turno '+String(r[2]||'').trim()
+        equipamento:'Turno '+String(r[2]||'').trim(),
+        hora_fim_expediente: horaFimExpediente,
+        horas_extras: horasExtras
       });
     }
   }
@@ -2016,17 +2062,22 @@ function diasComApontamento(linha){
   if(turno!=='all') src = src.filter(d=>String(d.turno)===String(turno));
   return new Set(src.map(d=>d.dia_prod||d.data).filter(Boolean));
 }
-function horasDisponivelDia(diaProd){
+function horasDisponivelDia(diaProd, linha){
   // Horas disponíveis por linha por dia, considerando o regime do dia
-  // Usa RAW_PRODUCAO para detectar regime (não filtra por fProd)
+  // + horas extras de expediente (T2 além das 15h) quando informado
   const sel    = document.getElementById('fTurno');
   const turnoF = sel ? sel.value : 'all';
   // getRegimeDia usa fProd ou RAW_PRODUCAO — correto
   const regime = getRegimeDia(diaProd);
+  // Horas extras de expediente: só conta em 2T quando filtro = all ou turno 2
+  const extras = (regime === '2t' && linha && (turnoF==='all' || turnoF==='2'))
+    ? getHorasExtrasExpediente(linha, diaProd)
+    : 0;
   if(turnoF !== 'all'){
-    return regime === '2t' ? 9 : 8;
+    const hBase = regime === '2t' ? 9 : 8;
+    return hBase + (turnoF==='2' ? extras : 0);
   }
-  return horasRegime(regime); // 18h ou 24h
+  return horasRegime(regime) + extras; // 18h + extras ou 24h
 }
 
 function diasValidosLinha(linha){
@@ -2057,10 +2108,11 @@ function diasValidosLinha(linha){
 
 function periodHoursPerLinha(linha){
   // Período = dias com produção > 0 OU com parada planejada
+  // Inclui horas extras de expediente (T2 além das 15h) quando informado na aba Percas
   const dias = diasValidosLinha(linha);
   if(!dias.size) return 0;
   let total=0;
-  dias.forEach(dia=>{ total+=horasDisponivelDia(dia); });
+  dias.forEach(dia=>{ total+=horasDisponivelDia(dia, linha); });
   return total;
 }
 
@@ -4221,13 +4273,18 @@ function isEfetividade(diaProd){
 
 function calcEfetividadeTurno(linha, turno, diaProd, meta){
   const regime  = getRegimeDia(diaProd);
-  const hTurno  = regime === '2t' ? 9 : 8;
+  // hTurno base: 9h (T1 ou T2 normal em 2t), 8h em 3t
+  // Se T2 teve hora extra de expediente, soma ao hTurno para taxa_h correta
+  let hTurnoBase = regime === '2t' ? 9 : 8;
+  const extras = (regime === '2t' && String(turno) === '2')
+    ? getHorasExtrasExpediente(linha, diaProd) : 0;
+  const hTurno = hTurnoBase + extras;
   const taxa_h  = meta / hTurno;
   const hParadas= (fParadas.length ? fParadas : RAW_PARADAS)
     .filter(d=>d.linha===linha && d.turno===String(turno) && (d.dia_prod||d.data)===diaProd)
     .reduce((s,d)=>s+d.duracao/60, 0);
   const metaAjust = Math.max(0, meta - (hParadas * taxa_h));
-  return { hParadas, taxa_h, metaAjust, hTurno };
+  return { hParadas, taxa_h, metaAjust, hTurno, hExtra: extras };
 }
 
 function calcPerformanceLinha(linha){
