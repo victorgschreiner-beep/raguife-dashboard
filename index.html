@@ -1704,7 +1704,7 @@ async function parseWorkbook(wb,fname){
       let horaFimExpediente = null;
       if(r[4] !== undefined && r[4] !== null && r[4] !== ''){
         if(r[4] instanceof Date){
-          horaFimExpediente = r[4].getHours() + r[4].getMinutes()/60;
+          horaFimExpediente = r[4].getUTCHours() + r[4].getUTCMinutes()/60;
         } else if(typeof r[4]==='number' && r[4]>0 && r[4]<1){
           // Fração de dia Excel: 0.5 = 12h, 0.708333 ≈ 17h
           horaFimExpediente = r[4]*24;
@@ -1714,7 +1714,8 @@ async function parseWorkbook(wb,fname){
         }
       }
       // Horas extras = hora_fim - 15h (só conta se > 15h e turno 2)
-      const horasExtras = (horaFimExpediente !== null && horaFimExpediente > 15 && String(r[2]).trim()==='2')
+      // Horas extras = hora_fim - 15h (qualquer turno pode informar a hora de encerramento do dia)
+      const horasExtras = (horaFimExpediente !== null && horaFimExpediente > 15)
         ? (horaFimExpediente - 15) : 0;
 
       newPerc.push({
