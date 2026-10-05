@@ -1303,7 +1303,7 @@ function getDB(){
   });
 }
 
-async function saveCloud(par,prod,perc,fname){
+async function saveCloud(par,prod,perc,cons,repoMes,fname){
   setFbStatus('syncing','Salvando...');showToast('Salvando na nuvem...','','☁️',99999);
   try{
     const db=await getDB();
@@ -1320,8 +1320,16 @@ async function saveCloud(par,prod,perc,fname){
     await batch('dados/paradas',par);
     setUStatus('Salvando produção...'); setUBar(65);
     await batch('dados/producao',prod);
-    setUStatus('Salvando percas...'); setUBar(85);
+    setUStatus('Salvando percas...'); setUBar(75);
     await batch('dados/percas',perc);
+    setUStatus('Salvando consumo...'); setUBar(88);
+    if(cons && cons.length) await batch('dados/consumo',cons);
+    setUStatus('Salvando resumo mensal...'); setUBar(93);
+    if(repoMes && repoMes.length){
+      await db.ref('dados/reprocesso_mes').remove();
+      const rm={};repoMes.forEach((r,i)=>{rm[i]=r;});
+      await db.ref('dados/reprocesso_mes').update(rm);
+    }
     const now=new Date();
     const ts=`${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     document.getElementById('lastBadge').innerHTML=`Arquivo: <span>${fname}</span><br>Nuvem: <span>${ts}</span>`;
@@ -1342,6 +1350,11 @@ async function loadCloud(){
     RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
     RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
     RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
+    RAW_CONSUMO.length=0;if(d.consumo) toArr(d.consumo).forEach(r=>RAW_CONSUMO.push(r));
+    if(d.reprocesso_mes){
+      RAW_REPROCESSO_MES.length=0;
+      toArr(d.reprocesso_mes).forEach(r=>RAW_REPROCESSO_MES.push(r));
+    }
     // Normalizar TODOS os registros do Firebase
     // Recalcular dia_prod do horário (não confiar no campo salvo)
     const parseDT2 = s=>{
@@ -1827,7 +1840,7 @@ async function parseWorkbook(wb,fname){
   setUBar(90);
 
   // Salvar automaticamente no Firebase
-  await saveCloud(newPar,newProd,newPerc,fname);
+  await saveCloud(newPar,newProd,newPerc,newCons,[...RAW_REPROCESSO_MES],fname);
 
   setTimeout(()=>{hideUpload();updateAll();},1200);
 }
