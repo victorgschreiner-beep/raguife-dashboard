@@ -712,7 +712,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
     <div class="ccard"><div class="ctit">Evolução Diária de Paradas</div><div class="csub">horas por dia — empilhado por categoria</div><div class="ch tall"><canvas id="cPerdDia"></canvas></div></div>
   </div>
   <div class="cgrid c2">
-    <div class="ccard"><div class="ctit">Paradas por Turno</div><div class="csub">eventos e horas — T1: 21h–05h · T2: 05h–13h · T3: 13h–21h</div><div class="ch"><canvas id="cTurno"></canvas></div></div>
+    <div class="ccard"><div class="ctit">Paradas por Turno</div><div class="csub">eventos e horas — T1: 21h–05h · T2: 05h–15h · T3: 13h–21h · PFT: 15h–21h (2 turnos)</div><div class="ch"><canvas id="cTurno"></canvas></div></div>
     <div class="ccard"><div class="ctit">Top 10 Motivos</div><div class="csub">por horas totais perdidas</div><div class="ch"><canvas id="cMotivos"></canvas></div></div>
   </div>
   <div class="cgrid c2">
@@ -983,6 +983,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
         <option value="1">T1 · 21h–05/06h</option>
         <option value="2">T2 · 05/06h–13/15h</option>
         <option value="3">T3 · 13h–21h (3 turnos)</option>
+        <option value="PFT">PFT · 15h–21h (2 turnos)</option>
       </select>
     </div>
     <div class="fg"><span class="fl">Categoria</span>
@@ -1615,16 +1616,19 @@ function splitByTurno(linha,cat,cod,motivo,desc,ini,fim){
     const segFim     = fim<tFim?fim:tFim;
     const dur        = (segFim-cur)/60000;
 
-    // Se t===null = janela sem turno (15h–21h no regime 2t) — pula sem registrar
-    if(dur>0.5 && t!==null){
+    // Se t===null = janela sem turno (15h–21h no regime 2t)
+    // PFT (Parada Final de Turno) ocorre exatamente nessa janela — deve ser registrada com turno 'PFT'
+    const isPFT = motivo && motivo.toLowerCase().includes('parada final de turno');
+    const turnoFinal = (t !== null) ? t : (isPFT ? 'PFT' : null);
+    if(dur>0.5 && turnoFinal!==null){
       recs.push({
         linha, categoria:cat, cod:String(cod||''), motivo, descricao:desc,
         inicio:      fmtDT(cur),
         fim:         fmtDT(segFim),
         inicio_orig: iniStr,
         evento_id:   eventoId,
-        turno:       t,
-        regime:      regime,  // ← salva o regime para consultas futuras
+        turno:       turnoFinal,
+        regime:      regime,
         duracao:     Math.round(dur*100)/100,
         data:        fmtDate(cur),
         dia_prod:    diaProdCur,
@@ -2497,10 +2501,10 @@ function updatePerdas(){
 
   destroyChart('cTurno');
   charts['cTurno']=new Chart(document.getElementById('cTurno'),{type:'bar',
-    data:{labels:['T1 · 21h–05h','T2 · 05h–13h','T3 · 13h–21h'],datasets:[
-      {label:'Eventos',data:['1','2','3'].map(t=>fParadas.filter(d=>d.turno===t).length),
+    data:{labels:['T1 · 21h–05h','T2 · 05h–13h','T3 · 13h–21h','PFT · 15h–21h'],datasets:[
+      {label:'Eventos',data:['1','2','3','PFT'].map(t=>fParadas.filter(d=>d.turno===t).length),
         backgroundColor:'#024f2bcc',borderColor:'#024f2b',borderWidth:2,borderRadius:5,yAxisID:'y'},
-      {label:'Horas',data:['1','2','3'].map(t=>+fParadas.filter(d=>d.turno===t).reduce((s,d)=>s+d.duracao/60,0).toFixed(2)),
+      {label:'Horas',data:['1','2','3','PFT'].map(t=>+fParadas.filter(d=>d.turno===t).reduce((s,d)=>s+d.duracao/60,0).toFixed(2)),
         backgroundColor:'#73963099',borderColor:'#739630',borderWidth:2,borderRadius:5,yAxisID:'y1'}]},
     options:{plugins:{legend:{labels:{color:'#444',font:{family:'DM Mono',size:9},boxWidth:10}}},
       scales:{x:{ticks:bT,grid:bG},
@@ -4104,9 +4108,8 @@ function filtrarParadasPorDiasValidos(paradas, producao){
     diasProdLinha[r.linha].add(dp);
   });
 
-  // Dias com qualquer parada lançada (manutenção, operacional, planejada)
+  // Dias com qualquer parada lançada (manutenção, operacional, planejada — inclusive PFT)
   paradas.forEach(r=>{
-    if(isParadaFinalTurno && isParadaFinalTurno(r)) return;
     const dp = r.dia_prod || r.data;
     if(!dp) return;
     if(!diasProdLinha[r.linha]) diasProdLinha[r.linha] = new Set();
