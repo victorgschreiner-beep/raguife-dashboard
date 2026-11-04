@@ -1391,6 +1391,7 @@ async function loadCloud(){
         }
       }
     });
+    reprocessarTurnosParadas(RAW_PARADAS); // aplica regra da PFT
     normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
     // Filtrar segmentos de fins de semana e dias sem produção
     const _lpFilt = filtrarParadasPorDiasValidos(RAW_PARADAS, RAW_PRODUCAO);
@@ -1494,6 +1495,81 @@ function getRegimePeriodo(){
   return temT3 ? '3t' : '2t';
 }
 
+// ═══════════ FIM DE EXPEDIENTE PELA PARADA FINAL DE TURNO (PFT) ═══════════
+// REGRA: o último turno do dia (T2 no regime 2T / T3 no 3T) termina no INÍCIO da PFT.
+// Ex.: PFT 15:27–16:00 → T2 = 06:00–15:27 (9h27 disponíveis). 15:27–16:00 fica fora do turno (planejada).
+// Ex.: PFT 14:20 → T2 = 06:00–14:20 (8h20). Paradas entre o fim padrão e o início da PFT passam a contar no turno.
+// Prioridade: 1) início da PFT  2) "Hora final de expediente" (aba Percas, só 2T)  3) fim padrão (15h / 21h)
+let FIM_EXP_PFT = {}; // { 'Linha 2|2026-11-03': 15.45 }
+function _isPFTmotivo(m){ return !!m && String(m).toLowerCase().includes('parada final de turno'); }
+function _horaDec(dt){ return dt.getHours() + dt.getMinutes()/60 + dt.getSeconds()/3600; }
+function _inicioUltimoTurno(regime){ return regime==='2t' ? 6 : 13; }
+function _fimPadraoTurno(regime){ return regime==='2t' ? 15 : 21; }
+function _dataNaHora(ref, hDec){
+  const H=Math.floor(hDec), M=Math.floor((hDec-H)*60+1e-9), S=Math.round(((hDec-H)*60-M)*60);
+  return new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),H,M,S);
+}
+function _parseDTbr(v){
+  if(!v) return null; if(v instanceof Date) return v;
+  const m=String(v).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+  return m ? new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]) : null;
+}
+function registrarFimExpPFT(linha, ini){
+  const dp=getDiaProd(ini), regime=getRegimeDia(dp), h=_horaDec(ini);
+  // Válida só se começar pelo menos 1h após o início do último turno e antes das 21h
+  if(h < _inicioUltimoTurno(regime)+1 || h >= 21) return;
+  const k=linha+'|'+dp;
+  FIM_EXP_PFT[k] = Math.min(FIM_EXP_PFT[k] ?? 99, h);
+}
+function construirFimExpPFT(eventos){
+  // eventos: [{linha, motivo, ini:Date}] ou registros processados {linha, motivo, inicio_orig|inicio}
+  FIM_EXP_PFT = {};
+  eventos.forEach(r=>{
+    if(!_isPFTmotivo(r.motivo)) return;
+    const ini = r.ini instanceof Date ? r.ini : _parseDTbr(r.inicio_orig||r.inicio);
+    if(ini) registrarFimExpPFT(r.linha, ini);
+  });
+}
+function getFimExpediente(linha, diaProd, regime){
+  regime = regime || getRegimeDia(diaProd);
+  const k=linha+'|'+diaProd;
+  if(FIM_EXP_PFT[k]!==undefined) return { hora:FIM_EXP_PFT[k], fonte:'PFT' };
+  if(regime==='2t'){
+    const src = fRepr.length ? fRepr : RAW_REPROCESSO;
+    let hMan = null;
+    src.forEach(r=>{
+      if(r.linha===linha && (r.dia_prod||r.data)===diaProd && r.hora_fim_expediente>15)
+        hMan = Math.max(hMan??0, r.hora_fim_expediente);
+    });
+    if(hMan!==null) return { hora:hMan, fonte:'manual' };
+  }
+  return { hora:_fimPadraoTurno(regime), fonte:'padrao' };
+}
+// Re-split das paradas já processadas (Firebase / dados embutidos) aplicando a regra da PFT.
+// Reconstrói cada evento original (evento_id) e divide de novo pelos turnos.
+function reprocessarTurnosParadas(arr){
+  const _bk = fProd; fProd = []; // força getRegimeDia a usar RAW_PRODUCAO atual
+  try{
+    construirFimExpPFT(arr);
+    const ev = new Map();
+    arr.forEach(r=>{
+      const k = r.evento_id || (r.linha+'|'+(r.inicio_orig||r.inicio)+'|'+r.motivo);
+      const ini = _parseDTbr(r.inicio_orig||r.inicio), fim = _parseDTbr(r.fim);
+      if(!ini || !fim) return;
+      const e = ev.get(k);
+      if(!e) ev.set(k,{linha:r.linha,cat:r.categoria,cod:r.cod,motivo:r.motivo,desc:r.descricao,ini,fim});
+      else if(fim>e.fim) e.fim=fim;
+    });
+    const out=[];
+    ev.forEach(e=>splitByTurno(e.linha,e.cat,e.cod,e.motivo,e.desc,e.ini,e.fim).forEach(s=>{
+      if(_isPFTmotivo(s.motivo) && s.duracao>600) s.duracao=360; // limitar PFTs absurdas
+      out.push(s);
+    }));
+    arr.length=0; out.forEach(r=>arr.push(r));
+  } finally { fProd = _bk; }
+  return arr;
+}
+
 function horasRegime(regime){
   // Horas disponíveis por dia por regime
   return regime==='3t' ? 24 : 18; // 3t: 3×8h | 2t: 9h+9h
@@ -1501,15 +1577,10 @@ function horasRegime(regime){
 
 // ── Horas extras de expediente (T2 além das 15h) por linha e dia ──
 function getHorasExtrasExpediente(linha, diaProd){
-  // Busca na aba Percas o registro da linha/dia com horas_extras preenchido
-  const src = fRepr.length ? fRepr : RAW_REPROCESSO;
-  let extras = 0;
-  src.forEach(r=>{
-    if(r.linha===linha && (r.dia_prod||r.data)===diaProd && r.horas_extras > 0){
-      extras = Math.max(extras, r.horas_extras);
-    }
-  });
-  return extras;
+  // AJUSTE do último turno em horas = fim do expediente − fim padrão (15h no 2T / 21h no 3T)
+  // Positivo: turno estendido (PFT depois das 15h) · Negativo: turno encerrado antes (PFT antes das 15h)
+  const regime = getRegimeDia(diaProd);
+  return getFimExpediente(linha, diaProd, regime).hora - _fimPadraoTurno(regime);
 }
 
 // ── Horas extras totais de um dia (soma das linhas com expediente estendido) ──
@@ -1525,34 +1596,39 @@ function getHorasExtrasExpedienteDia(diaProd){
   return Object.values(linhasComExtra).reduce((s,v)=>s+v, 0);
 }
 
-function getTurnoRegime(dt, regime){
+function getTurnoRegime(dt, regime, fimExp){
   // Classifica o turno baseado no regime do dia
-  const h = dt.getHours() + dt.getMinutes()/60;
+  // fimExp = hora (decimal) do fim do último turno — início da PFT. Padrão: 15h (2T) / 21h (3T)
+  const h = _horaDec(dt);
   if(regime==='2t'){
-    // T1: 21h–06h | T2: 06h–15h | fora: null (15h–21h não tem turno)
-    if(h>=6  && h<15)  return '2';
-    if(h>=15 && h<21)  return null; // janela sem turno
+    const fim = fimExp ?? 15;
+    // T1: 21h–06h | T2: 06h–fimExp | fora: null (fimExp–21h não tem turno)
+    if(h>=6 && h<fim) return '2';
+    if(h>=6 && h<21)  return null; // janela sem turno
     return '1'; // 21h–06h
   }else{
-    // T1: 21h–05h | T2: 05h–13h | T3: 13h–21h
-    if(h>=5  && h<13) return '2';
-    if(h>=13 && h<21) return '3';
+    const fim = fimExp ?? 21;
+    // T1: 21h–05h | T2: 05h–13h | T3: 13h–fimExp
+    if(h>=5  && h<13)  return '2';
+    if(h>=13 && h<fim) return '3';
+    if(h>=13 && h<21)  return null;
     return '1';
   }
 }
 
-function getLimiteTurno(cur, regime){
-  // Retorna o fim do turno atual baseado no regime
-  const h = cur.getHours();
+function getLimiteTurno(cur, regime, fimExp){
+  // Retorna o fim do turno atual baseado no regime (e no fim de expediente pela PFT)
+  const h = _horaDec(cur);
   if(regime==='2t'){
+    const fim = fimExp ?? 15;
     if(h>=21 || h<6){
       // T1: vai até 06h do próximo dia
       return h>=21
         ? new Date(cur.getFullYear(),cur.getMonth(),cur.getDate()+1,6,0)
         : new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),6,0);
-    }else if(h>=6 && h<15){
-      // T2: vai até 15h
-      return new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),15,0);
+    }else if(h>=6 && h<fim){
+      // T2: vai até o fim do expediente (início da PFT ou 15h)
+      return _dataNaHora(cur, fim);
     }else{
       // Janela sem turno (15h–21h): vai até 21h
       return new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),21,0);
@@ -1565,6 +1641,8 @@ function getLimiteTurno(cur, regime){
         : new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),5,0);
     }else if(h>=5 && h<13){
       return new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),13,0);
+    }else if(fimExp!=null && h<fimExp){
+      return _dataNaHora(cur, fimExp); // T3 encerrado pela PFT
     }else{
       return new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),21,0);
     }
@@ -1594,7 +1672,7 @@ function splitByTurno(linha,cat,cod,motivo,desc,ini,fim){
   if(MOTIVOS_SEM_SPLIT.includes(motivo)){
     const dp     = getDiaProd(ini);
     const regime = getRegimeDia(dp)||'3t';
-    const t      = getTurnoRegime(ini, regime)||'1';
+    const t      = getTurnoRegime(ini, regime, FIM_EXP_PFT[linha+'|'+dp])||'1';
     const dur    = (fim-ini)/60000;
     return dur > 0 ? [{
       linha, categoria:cat, cod:String(cod||''), motivo, descricao:desc,
@@ -1611,8 +1689,10 @@ function splitByTurno(linha,cat,cod,motivo,desc,ini,fim){
     // Detectar regime do dia atual pelo apontamento de produção
     const diaProdCur = getDiaProd(cur);
     const regime     = getRegimeDia(diaProdCur);
-    const t          = getTurnoRegime(cur, regime);
-    const tFim       = getLimiteTurno(cur, regime);
+    const fimExp     = FIM_EXP_PFT[linha+'|'+diaProdCur];
+    const t          = getTurnoRegime(cur, regime, fimExp);
+    const tFim       = getLimiteTurno(cur, regime, fimExp);
+    if(tFim<=cur) break; // proteção contra loop infinito
     const segFim     = fim<tFim?fim:tFim;
     const dur        = (segFim-cur)/60000;
 
@@ -1695,13 +1775,21 @@ async function parseWorkbook(wb,fname){
     rawPar.push({linha:String(r[0]).trim(),cat:String(r[1]).trim(),cod:r[2],
       motivo:String(r[3]).trim(),desc:String(r[4]).trim(),ini,fim});
   }
-  const seen=new Set();
-  const uniqPar=rawPar.filter(r=>{
-    const k=r.linha+'|'+r.ini.getTime()+'|'+r.fim.getTime();
-    if(seen.has(k))return false;seen.add(k);return true;
+  // Deduplicação: mesma linha + mesmo início (minuto) + mesmo motivo = mesmo evento.
+  // Lançamentos repetidos com fim diferente são unidos (mantém o fim mais tarde) — evita contar horas em dobro.
+  const evMap=new Map(); let nDupFim=0;
+  rawPar.forEach(r=>{
+    const k=r.linha+'|'+fmtDT(r.ini)+'|'+r.motivo;
+    const e=evMap.get(k);
+    if(!e){evMap.set(k,r);return;}
+    if(e.fim.getTime()!==r.fim.getTime()) nDupFim++;
+    if(r.fim>e.fim) e.fim=r.fim;
   });
+  const uniqPar=[...evMap.values()];
+  if(nDupFim) console.warn('[PARADAS] '+nDupFim+' lançamento(s) duplicado(s) com mesmo início e fim diferente — unidos no evento mais longo');
   console.log('Paradas: '+rawPar.length+' originais → '+uniqPar.length+' sem duplicatas');
   const newPar=[];
+  construirFimExpPFT(uniqPar); // fim do último turno = início da PFT
   uniqPar.forEach(r=>splitByTurno(r.linha,r.cat,r.cod,r.motivo,r.desc,r.ini,r.fim).forEach(s=>newPar.push(s)));
   if(!newPar.length){fProd=_fProdBackup;setUStatus('❌ Nenhum dado válido em Paradas','err');return;}
   fProd=_fProdBackup; // restaurar fProd original
@@ -2087,15 +2175,14 @@ function horasDisponivelDia(diaProd, linha){
   const turnoF = sel ? sel.value : 'all';
   // getRegimeDia usa fProd ou RAW_PRODUCAO — correto
   const regime = getRegimeDia(diaProd);
-  // Horas extras de expediente: só conta em 2T quando filtro = all ou turno 2
-  const extras = (regime === '2t' && linha && (turnoF==='all' || turnoF==='2'))
-    ? getHorasExtrasExpediente(linha, diaProd)
-    : 0;
+  const ultimo = regime==='2t' ? '2' : '3';
+  // Ajuste do último turno (PFT / hora final): pode ser + (estendeu) ou − (encerrou antes)
+  const ajuste = linha ? getHorasExtrasExpediente(linha, diaProd) : 0;
   if(turnoF !== 'all'){
     const hBase = regime === '2t' ? 9 : 8;
-    return hBase + (turnoF==='2' ? extras : 0);
+    return Math.max(0, hBase + (turnoF===ultimo ? ajuste : 0));
   }
-  return horasRegime(regime) + extras; // 18h + extras ou 24h
+  return Math.max(0, horasRegime(regime) + ajuste); // 18h/24h ± ajuste
 }
 
 function diasValidosLinha(linha){
@@ -2191,10 +2278,11 @@ function horasTotaisDisponiveis(){
     const pHL_l = periodHoursPerLinha(l);
     if(pHL_l===0) return;
     const diasL = diasValidosLinha(l);
-    // Incluir PFT na subtração — representa horas sem turno no regime 2T
+    // PFT NÃO é subtraída: o período já termina no início da PFT
     const ppL = fParadas.filter(d=>
       d.linha===l &&
       d.categoria==='Fator Externo/Parada Planejada' &&
+      !isParadaFinalTurno(d) &&
       diasL.has(d.dia_prod||d.data)
     ).reduce((s,d)=>s+d.duracao/60, 0);
     total += Math.max(0, pHL_l - Math.min(ppL, pHL_l));
@@ -2777,19 +2865,18 @@ function updateComparativo(){
     data:{labels:meses.map(m=>{const d=RAW_PARADAS.find(x=>x.mes===m)||RAW_PRODUCAO.find(x=>x.mes===m);return d?.mes_label||m;}),
       datasets:LINHAS.map(l=>({label:l,
         data:meses.map(m=>{
-          const mPar=RAW_PARADAS.filter(d=>d.mes===m);
+          // Mesma regra do OEE principal (calcOEE), aplicada ao mês
           const mProd=RAW_PRODUCAO.filter(d=>d.mes===m);
-          const mPerc=RAW_REPROCESSO.filter(d=>d.mes===m);
-          const uDays=new Set(mPar.map(d=>d.data)).size||1;
-          const pHL=uDays*3*8;
-          const pD=mPar.filter(d=>d.linha===l&&!CATS_EXCL_DISP.includes(d.categoria)).reduce((s,d)=>s+d.duracao/60,0);
-          const disp=Math.max(0,(pHL-pD)/pHL);
-          const pReal=mProd.filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
-          const pMeta=mProd.filter(d=>d.linha===l).reduce((s,d)=>s+(d.meta||0),0);
-          const perf=pMeta>0?Math.min(1,pReal/pMeta):1;
-          const perc=mPerc.filter(d=>d.linha===l).reduce((s,d)=>s+d.quantidade,0);
-          const qual=pReal>0?Math.max(0,(pReal-perc)/pReal):1;
-          return+(disp*perf*qual*100).toFixed(1);
+          if(!mProd.some(d=>d.linha===l)) return null;
+          const bk=[fParadas,fProd,fRepr];
+          let v=0;
+          try{
+            fParadas=RAW_PARADAS.filter(d=>d.mes===m);
+            fProd=mProd;
+            fRepr=RAW_REPROCESSO.filter(d=>d.mes===m);
+            v=calcOEE(l).oee;
+          } finally { [fParadas,fProd,fRepr]=bk; }
+          return +v.toFixed(1);
         }),
         borderColor:LC[l]||'#024f2b',backgroundColor:(LC[l]||'#024f2b')+'22',
         borderWidth:2,pointRadius:4,fill:false,tension:.3}))},
@@ -3349,21 +3436,34 @@ function tvFmtDia(dia){
   return dia.slice(8)+'/'+dia.slice(5,7)+'/'+dia.slice(0,4);
 }
 
+function tvHorasLinha(dia, linha, forcarDia){
+  // Horas disponíveis da linha (regime do dia ± ajuste do fim de expediente pela PFT)
+  let dias;
+  if(dia==='all'){
+    const pr=tvGetProdDia('all').filter(d=>d.linha===linha);
+    const pa=tvGetParDia('all').filter(d=>d.linha===linha && !isParadaFinalTurno(d));
+    dias=new Set([...pr,...pa].map(d=>d.dia_prod||d.data).filter(Boolean));
+  } else if(forcarDia){
+    dias=new Set([dia]);
+  } else {
+    const tem=tvGetProdDia(dia).some(d=>d.linha===linha)||tvGetParDia(dia).some(d=>d.linha===linha);
+    dias=new Set(tem?[dia]:[]);
+  }
+  let h=0;
+  dias.forEach(dp=>{ h+=Math.max(0, horasRegime(getRegimeDia(dp)) + getHorasExtrasExpediente(linha, dp)); });
+  return h;
+}
+function tvHorasTodas(dia){ return LINHAS.reduce((s,l)=>s+tvHorasLinha(dia,l,false),0); }
+
 function tvCalcOEE(dia,linha){
   const par  = tvGetParDia(dia).filter(d=>d.linha===linha);
   const prod = tvGetProdDia(dia).filter(d=>d.linha===linha);
   const perc = tvGetPercDia(dia).filter(d=>d.linha===linha);
 
   // Período: usa diasValidosLinha se disponível, senão fallback
-  let pHL = 0;
-  if(dia==='all'){
-    const nDias = Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size);
-    const regime = getRegimePeriodo ? getRegimePeriodo() : '3t';
-    pHL = nDias * (regime==='2t'?18:24);
-  } else {
-    const regime = getRegimeDia ? getRegimeDia(dia) : '3t';
-    pHL = regime==='2t' ? 18 : 24;
-  }
+  // Período: regime do dia ± ajuste do último turno (fim = início da PFT)
+  const pHL = tvHorasLinha(dia, linha, true);
+  if(pHL<=0) return {oee:0,disp:0,perf:0,qual:0,real:0,meta:0,percs:0,pD:0};
 
   // Disponibilidade — exclui Setup e Planejadas e PFT
   const pD = par.filter(d=>
@@ -3452,7 +3552,7 @@ function tvRender(){
     const mttr=nMntU>0?mntH/nMntU:0;
     const nDiasP=dia==='all'?Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size):1;
     const nLP=new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
-    const pHL4=nDiasP*24*nLP;
+    const pHL4=tvHorasTodas(dia)||nDiasP*24*nLP;
     const dispG=pHL4>0?(Math.max(0,pHL4-mntH)/pHL4)*100:100;
     const linhasV=tvLinhasOEEValidas(dia);
     const oeeMed=linhasV.length?linhasV.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasV.length:0;
@@ -3658,6 +3758,7 @@ function tvFStartRefresh(){
           RAW_PARADAS.length=0;toArr(d.paradas).forEach(r=>RAW_PARADAS.push(r));
           RAW_PRODUCAO.length=0;toArr(d.producao).forEach(r=>RAW_PRODUCAO.push(r));
           RAW_REPROCESSO.length=0;toArr(d.percas).forEach(r=>RAW_REPROCESSO.push(r));
+          reprocessarTurnosParadas(RAW_PARADAS); // aplica regra da PFT
           normalizarDados(RAW_PARADAS, RAW_PRODUCAO);
           const sync=document.getElementById('tvFSync');
           if(sync){const n=new Date();sync.textContent='Sync: '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
@@ -3710,7 +3811,7 @@ function tvFRender(){
     const mttr=nMntU>0?mntH/nMntU:0;
     const nDiasF=Math.max(1,new Set(RAW_PARADAS.map(d=>d.dia_prod).filter(Boolean)).size);
     const nLF=new Set(RAW_PARADAS.map(d=>d.linha).filter(Boolean)).size||4;
-    const pHLF=nDiasF*24*nLF;
+    const pHLF=tvHorasTodas(dia)||nDiasF*24*nLF;
     const dispG=pHLF>0?(Math.max(0,pHLF-mntH)/pHLF)*100:100;
     const linhasV=tvLinhasOEEValidas(dia);
     const oeeMed=linhasV.length?linhasV.map(l=>tvCalcOEE(dia,l).oee).reduce((a,b)=>a+b,0)/linhasV.length:0;
@@ -4208,6 +4309,7 @@ RAW_PARADAS.forEach(r=>{
     r.duracao = Math.min(r.duracao, 360);
   }
 });
+reprocessarTurnosParadas(RAW_PARADAS); // aplica regra da PFT
 // Filtrar segmentos de fins de semana e dias sem produção
 const _parFiltradas = filtrarParadasPorDiasValidos(RAW_PARADAS, RAW_PRODUCAO);
 RAW_PARADAS.length = 0;
@@ -4293,9 +4395,10 @@ function calcEfetividadeTurno(linha, turno, diaProd, meta){
   // hTurno base: 9h (T1 ou T2 normal em 2t), 8h em 3t
   // Se T2 teve hora extra de expediente, soma ao hTurno para taxa_h correta
   let hTurnoBase = regime === '2t' ? 9 : 8;
-  const extras = (regime === '2t' && String(turno) === '2')
-    ? getHorasExtrasExpediente(linha, diaProd) : 0;
-  const hTurno = hTurnoBase + extras;
+  const ultimo = regime==='2t' ? '2' : '3';
+  // Último turno: duração real = até o início da PFT (ajuste pode ser + ou −)
+  const extras = String(turno) === ultimo ? getHorasExtrasExpediente(linha, diaProd) : 0;
+  const hTurno = Math.max(0.5, hTurnoBase + extras);
   const taxa_h  = meta / hTurno;
   const hParadas= (fParadas.length ? fParadas : RAW_PARADAS)
     .filter(d=>d.linha===linha && d.turno===String(turno) && (d.dia_prod||d.data)===diaProd)
