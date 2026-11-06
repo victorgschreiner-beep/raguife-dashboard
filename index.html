@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Dashboard Raguife — Produção & Perdas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script id="mobile-chart-ajuste">
+/* Mobile: gráficos mais altos (proporção 1.2:1) para leitura em tela estreita; desktop inalterado */
+(function(){try{if(window.Chart&&window.matchMedia('(max-width:700px)').matches){Chart.defaults.aspectRatio=1.2;}}catch(e){}})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -548,6 +552,181 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
     font-size:.65rem; font-weight:800; background:rgba(217,119,6,.1);
     color:#d97706; border:1px solid rgba(217,119,6,.3); font-family:'DM Mono',monospace; }
 
+</style>
+<style id="mobile-responsivo">
+/* ══════ CAMADA RESPONSIVA (MOBILE) — adicionada sem alterar o layout desktop ══════ */
+html{-webkit-text-size-adjust:100%;}
+.m-fbar-toggle{display:none;}
+.tabs{scrollbar-width:thin;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;}
+
+@media (max-width:900px){
+  .hdr{height:auto;min-height:64px;padding:8px 16px;flex-wrap:wrap;gap:8px;}
+  .hdr-r{justify-content:flex-end;}
+  .fbar{padding:10px 16px;}
+  .tabs{padding:0 16px;}
+  .page{padding:16px;}
+  .tv-mode-bar{gap:8px;}
+}
+
+@media (max-width:700px){
+
+  /* Filtros recolhíveis no celular */
+  .m-fbar-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+    background:var(--surface);border:none;border-bottom:2px solid var(--border);padding:11px 14px;
+    font-family:'Nunito',sans-serif;font-size:.8rem;font-weight:800;color:var(--gdk);cursor:pointer;}
+  .m-fbar-toggle .m-fbar-info{font-family:'DM Mono',monospace;font-size:.66rem;color:var(--muted);font-weight:500;}
+  .m-fbar-toggle .m-fbar-arrow{transition:transform .2s;display:inline-block;}
+  .m-fbar-toggle.open .m-fbar-arrow{transform:rotate(180deg);}
+  .fbar.m-collapsed{display:none;}
+
+  /* TV: barra de modo organizada */
+  .tv-mode-bar > span:first-child{flex-basis:100%;}
+  .tv-mode-bar > span:not(:first-child){flex:0 0 32%;}
+  #tvPips{display:flex;align-items:center;gap:6px;}
+
+  /* Cabeçalho: deixa de ser fixo (economiza tela) e empilha */
+  .hdr{position:relative;flex-direction:column;align-items:stretch;padding:10px 12px;gap:10px;}
+  .hdr-l{gap:10px;}
+  .logo-wrap{height:36px;padding:2px 8px;}
+  .logo-wrap img{height:28px;}
+  .hdr-title h1{font-size:.92rem;}
+  .hdr-sub{font-size:.58rem;white-space:normal;}
+  .hdr-r{justify-content:flex-start;gap:6px;}
+  .last-badge{text-align:left;}
+  .hbtn{flex:1 1 auto;min-height:38px;padding:6px 10px;font-size:.72rem;}
+
+  /* Abas fixas no topo ao rolar */
+  .tabs{position:sticky;top:0;z-index:190;padding:0 8px;box-shadow:0 2px 8px rgba(2,79,43,.08);}
+  .tab{padding:12px 12px;font-size:.76rem;}
+
+  /* Filtros em grade de 2 colunas, campos largura total */
+  .fbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;}
+  .fbar .fg{flex-direction:column;align-items:stretch;gap:3px;min-width:0;}
+  .fbar .fs,.fbar .fi{width:100%;min-width:0;}
+  .fs,.fi{font-size:16px;min-height:38px;padding:5px 8px;} /* 16px evita zoom automático no iOS */
+  .fbar .fbtn{min-height:40px;}
+  .fcount{grid-column:1/-1;margin-left:0;text-align:center;}
+
+  /* Páginas e cards */
+  .page{padding:12px;}
+  .page > div[style*="justify-content:flex-end"] .fbtn{width:100%;min-height:40px;}
+  .kgrid{gap:8px;margin-bottom:14px;}
+  .kcard{padding:12px 10px 10px;border-radius:11px;}
+  .kcard:hover{transform:none;}
+  .klbl{font-size:.55rem;letter-spacing:.5px;}
+  .kval{font-size:1.35rem;}
+  .kval.sm{font-size:1.08rem;word-break:break-word;}
+  .kunit{font-size:.62rem;}
+  .kico{font-size:1rem;right:8px;top:8px;}
+  .cgrid{gap:10px;margin-bottom:14px;}
+  .ccard{padding:12px;border-radius:11px;min-width:0;}
+  .ctit{font-size:.8rem;}
+  .csub{font-size:.6rem;margin-bottom:8px;}
+  .ch{position:relative;width:100%;}
+  .ch canvas,.ch.tall canvas{max-height:300px;}
+  .ch.sh canvas{max-height:200px;}
+
+  /* Barras OEE */
+  .oee-row{gap:6px;}
+  .oee-lbl{min-width:48px;font-size:.72rem;}
+  .oee-bg{height:24px;}
+  .oee-pct{min-width:42px;font-size:.76rem;}
+  .oee-detail{margin-left:0;margin-top:0;}
+
+  /* Tabelas: rolagem horizontal com toque */
+  .ptable-wrap,.ccard div[style*="overflow-x:auto"]{-webkit-overflow-scrolling:touch;}
+  .ptable-wrap{max-height:65vh;}
+  .tbl,.ptable{font-size:.7rem;}
+  .tbl th,.ptable th{white-space:nowrap;}
+  .tbl td,.tbl th,.ptable td,.ptable th{padding:6px 7px;}
+  .repo-table td{font-size:.74rem;padding:8px;}
+  .repo-table th{padding:7px 8px;white-space:nowrap;}
+
+  /* Comparativo mensal */
+  .mes-grid{grid-template-columns:1fr 1fr;}
+  .mes-val{font-size:1.1rem;}
+
+  /* Aba Detalhe — barra de filtros local */
+  #page-detalhe > div:first-child{padding:10px 12px !important;gap:8px !important;}
+  #page-detalhe > div:first-child > span:first-child{flex-basis:100%;}
+  #page-detalhe > div:first-child .fg{flex:1 1 30%;min-width:0;flex-direction:column;align-items:stretch;}
+  #page-detalhe > div:first-child .fg:has(#searchPar){flex-basis:100%;}
+  #searchPar{width:100% !important;}
+  #page-detalhe > div:first-child > div[style*="margin-left:auto"]{margin-left:0 !important;flex-basis:100%;}
+  #page-detalhe > div:first-child .fbtn{flex:1 1 auto;min-height:40px;}
+  .pag-bar{flex-direction:column;align-items:stretch;}
+  .pag-btns{justify-content:center;}
+  .pag-btn{min-width:38px;height:36px;}
+
+  /* Sobreposições */
+  .obox{padding:28px 20px;}
+  .toast{left:12px;right:12px;bottom:12px;max-width:none;}
+
+  /* TV / Apresentação — modo reunião */
+  .tv-mode-bar{padding:10px 12px;}
+  .tv-sep{display:none;}
+  .tv-mode-btn{flex:1 1 45%;padding:9px 10px;font-size:.76rem;}
+  #tvDiaSel,#tvIntervalo{flex:1 1 60%;width:auto !important;min-width:0 !important;}
+  #tvBtnFullscreen{margin-left:0 !important;flex-basis:100%;min-height:40px;}
+  .slide-nav{gap:6px;}
+  .slide-progress{flex-basis:100%;order:10;}
+  .slides-wrapper{min-height:0;}
+  .slide{padding:14px;}
+  .slide-title{font-size:.9rem;flex-wrap:wrap;gap:6px;}
+  .slide-title .badge-dia{margin-left:0;flex-basis:100%;}
+  .tv-oee-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .tv-oee-card{padding:14px 10px;}
+  .tv-oee-val{font-size:2rem;}
+  .tv-kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .tv-kpi{padding:12px 8px;}
+  .tv-kpi-val{font-size:1.3rem;}
+  .tv-par-item{padding:10px 12px;gap:8px;}
+  .tv-par-rank{min-width:22px;font-size:1rem;}
+  .tv-par-info{min-width:0;}
+  .tv-par-motivo{font-size:.8rem;}
+  .tv-par-dur{font-size:1.05rem;}
+  .tv-comp-grid{grid-template-columns:1fr;}
+  .tv-ctrl-bar{flex-wrap:wrap;padding:10px 12px;}
+  .tv-ctrl-bar .tv-ctrl-btn.red{margin-left:0 !important;flex-basis:100%;}
+  .tv-ctrl-btn{min-height:38px;}
+
+  /* TV tela cheia (chão de fábrica) no celular */
+  .tv-fhdr{height:auto;padding:10px 12px;flex-wrap:wrap;gap:8px;padding-right:80px;}
+  .tv-logo-w{height:34px;}
+  .tv-logo-w img{height:26px;}
+  .tv-clock{font-size:1.2rem;letter-spacing:1px;}
+  .tv-fbody{padding:10px;gap:10px;overflow-y:auto;}
+  .tv-f-oee-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .tv-f-oee-card{padding:12px 8px;}
+  .tv-f-oee-val{font-size:2.2rem;}
+  .tv-f-kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .tv-f-kpi-v{font-size:1.2rem;}
+  .tv-f-bottom{grid-template-columns:1fr;flex:none;overflow:visible;}
+  .tv-exit-btn{top:10px;right:10px;padding:7px 12px;}
+
+  /* Modal de paradas da linha */
+  .tv-modal{width:96%;max-height:92vh;border-radius:14px;}
+  .tv-modal-hdr{padding:12px 14px;gap:10px;flex-wrap:wrap;}
+  .tv-modal-title{font-size:.95rem;}
+  #tvModalOEE{padding:12px 14px 0 !important;flex-wrap:wrap;gap:8px;}
+  .tv-modal-oee > div:not(.tv-modal-oee-item){display:none !important;}
+  .tv-modal-oee-item{flex:1 1 40%;padding:10px;}
+  .tv-modal-oee-val{font-size:1.4rem;}
+  .tv-modal-kpis{grid-template-columns:repeat(2,1fr);padding:12px 14px;gap:8px;}
+  .tv-modal-kpi-v{font-size:1.15rem;}
+  .tv-modal-body{padding:12px 14px;}
+  .tv-modal-par-item{padding:10px;gap:8px;}
+  .tv-modal-par-item:hover{transform:none;}
+  .tv-modal-par-motivo{font-size:.8rem;}
+  .tv-modal-par-h{font-size:1rem;}
+}
+
+@media (max-width:380px){
+  .fbar{grid-template-columns:1fr;}
+  .kval.sm{font-size:.98rem;}
+  .tv-oee-val,.tv-f-oee-val{font-size:1.7rem;}
+  .mes-grid{grid-template-columns:1fr;}
+}
 </style>
 </head>
 <body>
@@ -4428,6 +4607,28 @@ function calcPerformanceLinha(linha){
 
 
 updateAll();
+</script>
+<script id="mobile-ajustes">
+(function(){
+  var mq=window.matchMedia('(max-width:700px)');
+  /* Centraliza a aba clicada na barra rolável */
+  document.querySelectorAll('.tabs .tab').forEach(function(t){t.addEventListener('click',function(){
+    if(!mq.matches)return;var bar=t.parentElement;
+    bar.scrollTo({left:t.offsetLeft-(bar.clientWidth-t.offsetWidth)/2,behavior:'smooth'});});});
+  /* Filtros globais recolhíveis (só aparece no celular) */
+  var fbar=document.querySelector('.fbar');if(!fbar)return;
+  var btn=document.createElement('button');btn.type='button';btn.className='m-fbar-toggle';
+  btn.innerHTML='<span>🔎 Filtros <span class="m-fbar-arrow">▾</span></span><span class="m-fbar-info"></span>';
+  fbar.parentNode.insertBefore(btn,fbar);fbar.classList.add('m-collapsed');
+  var info=btn.querySelector('.m-fbar-info');
+  function upd(){var a=document.getElementById('cShown'),b=document.getElementById('cTotal');
+    var ativos=0;fbar.querySelectorAll('select').forEach(function(s){if(s.value!=='all')ativos++;});
+    info.textContent=(ativos?ativos+' ativo(s) · ':'')+'Paradas '+(a?a.textContent:'—')+'/'+(b?b.textContent:'—');}
+  btn.addEventListener('click',function(){var c=fbar.classList.toggle('m-collapsed');btn.classList.toggle('open',!c);upd();});
+  fbar.addEventListener('change',upd);
+  var cs=document.getElementById('cShown');if(cs&&window.MutationObserver)new MutationObserver(upd).observe(cs,{childList:true,characterData:true,subtree:true});
+  upd();
+})();
 </script>
 </body>
 </html>
